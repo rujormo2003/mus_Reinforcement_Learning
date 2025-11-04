@@ -176,11 +176,6 @@ class MusEnvironment(gym.Env):
             if j0<j1:w0=False
         return self._get_winner(0,1,w0)
     
-    # --- Lógica de FSM (Máquina de estados) ---
-    # (Funciones _set_next_lance, _move_to_next_lance, _resolve_lance_winner,
-    # _check_game_over, _get_next_player, _handle_action_announce,
-    # _handle_action_start, _handle_action_response)
-    # (¡Sin cambios en su lógica interna!)
     def _set_next_lance(self, lance_name):
         self.current_lance = lance_name
         self.current_player_idx = self.mano_player_idx
@@ -254,7 +249,7 @@ class MusEnvironment(gym.Env):
         self.baraja.crear_baraja(); self.baraja.mezclar()
         self.manos[0] = Mano(self.baraja.repartir(4))
         self.manos[1] = Mano(self.baraja.repartir(4))
-        self.historial_acciones = [] # ¡NUEVO! Resetea el historial numérico
+        self.historial_acciones = [] 
         self._set_next_lance('GRANDE')
 
     def _get_legal_actions(self) -> list[MusAction]:
@@ -273,7 +268,6 @@ class MusEnvironment(gym.Env):
                 return [MusAction.TENGO] if self.manos[self.current_player_idx].tiene_juego() else [MusAction.NO_TENGO]
         return []
 
-    # --- ¡¡¡FUNCIONES CLAVE NUEVAS / MODIFICADAS (Interfaz de Gym)!!! ---
 
     def _get_observation(self, player_idx) -> np.ndarray:
         """
@@ -358,18 +352,14 @@ class MusEnvironment(gym.Env):
             player_id = self.current_player_idx
             legal_actions = self._get_legal_actions()
 
-            # --- ¡¡EL ARREGLO!! ---
             if action not in legal_actions:
                 reward = -20 # Penalización MUY fuerte por hacer trampas/bugs
                 
                 if not legal_actions:
-                    # No hay NADA que hacer. El entorno está roto.
                     self.game_over = True
                     obs = self._get_observation(player_id)
                     return obs, reward, True, False, {"error": "Estado bloqueado sin acciones"}
-                
-                # La IA eligió mal, pero el juego debe continuar.
-                # Forzamos una acción legal aleatoria para "desatascar".
+
                 action = random.choice(legal_actions) 
             
             else:

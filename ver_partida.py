@@ -1,54 +1,9 @@
 import os
 import random
 from stable_baselines3 import PPO
-
-# Importamos nuestro entorno y acciones
 from entorno_mus import MusEnvironment, MusAction
+from evaluar import RandomAgent, BasicoAgent
 
-# --- 1. DEFINICIÓN DE LOS BOTS OPONENTES (Copiados de evaluar.py) ---
-
-class RandomAgent:
-    def __init__(self, player_id=1):
-        self.player_id = player_id
-    def choose_action(self, observation):
-        legal_actions = observation["legal_actions_enums"]
-        if not legal_actions: return None 
-        return random.choice(legal_actions)
-
-class BasicoAgent:
-    def __init__(self, player_id=1):
-        self.player_id = player_id
-    def choose_action(self, observation):
-        legal_actions = observation["legal_actions_enums"]
-        if not legal_actions: return None
-        if len(legal_actions) == 1: return legal_actions[0]
-
-        my_hand_info = observation["my_hand_info"]
-        current_lance = observation["game_state"]["current_lance"]
-        lance_state = observation["game_state"]["lance_state"]
-        
-        if lance_state == "START":
-            mi_jugada_es_buena = False
-            if current_lance == 'GRANDE': mi_jugada_es_buena = (my_hand_info["valores"][0] == 10)
-            elif current_lance == 'CHICA': mi_jugada_es_buena = (my_hand_info["valores"][3] == 1)
-            elif current_lance in ['PARES', 'JUEGO']: mi_jugada_es_buena = True 
-            
-            if mi_jugada_es_buena and MusAction.ENVIDO in legal_actions: return MusAction.ENVIDO
-            else: return MusAction.PASO
-
-        elif lance_state == "BET_MADE":
-            mi_jugada_es_buena = False
-            if current_lance == 'GRANDE': mi_jugada_es_buena = (my_hand_info["valores"][0] == 10)
-            elif current_lance == 'CHICA': mi_jugada_es_buena = (my_hand_info["valores"][3] == 1)
-            elif current_lance == 'PARES': mi_jugada_es_buena = (my_hand_info["pares"]["tipo"] != 'Ninguno')
-            elif current_lance == 'JUEGO': mi_jugada_es_buena = my_hand_info["tiene_juego"]
-
-            if mi_jugada_es_buena and MusAction.QUIERO in legal_actions: return MusAction.QUIERO
-            else: return MusAction.NO_QUIERO
-                
-        return random.choice(legal_actions)
-
-# --- 2. FUNCIÓN DE PARTIDA VERBOSE ---
 
 def jugar_partida_verbose(model, opponent_agent):
     
@@ -136,11 +91,10 @@ def jugar_partida_verbose(model, opponent_agent):
     print("=" * 40)
 
 
-# --- 3. EL SCRIPT PRINCIPAL ---
 
 if __name__ == "__main__":
     
-    MODEL_PATH = "./models/mus_ppo/mus_agent_1M" # Ajusta si lo guardaste con otro nombre
+    MODEL_PATH = "./models/mus_ppo/mus_agent_1M"
     
     if not os.path.exists(f"{MODEL_PATH}.zip"):
         print(f"Error: No se encontró el modelo en {MODEL_PATH}.zip")

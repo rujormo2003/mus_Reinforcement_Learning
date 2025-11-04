@@ -39,19 +39,17 @@ model = PPO(
     ent_coef=0.05,                  # Coeficiente de entropía (exploración)
     learning_rate=3e-4,             # 0.0003
     policy_kwargs=policy_kwargs,
-    tensorboard_log=log_dir         # ¡¡AQUÍ es donde se activa TensorBoard!!
+    tensorboard_log=log_dir         
 )
 
 # --- 5. Entrenar el Modelo ---
-# Vamos a entrenar por 1,000,000 de pasos. 
-# Esto puede tardar (¡desde minutos hasta horas dependiendo de tu PC!)
 TIMESTEPS_TOTALES = 1000000
 
 print(f"Empezando entrenamiento por {TIMESTEPS_TOTALES} timesteps...")
 model.learn(
     total_timesteps=TIMESTEPS_TOTALES,
-    tb_log_name="PPO_Mus_Run1",    # Nombre de esta ejecución en TensorBoard
-    progress_bar=True             # Muestra una bonita barra de progreso
+    tb_log_name="PPO_Mus_Run1",   
+    progress_bar=True            
 )
 
 # --- 6. Guardar el Modelo ---
