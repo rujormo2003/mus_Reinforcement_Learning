@@ -2,142 +2,175 @@ import os
 import sys
 import pygame
 import random
+import time  # Necesario para las pausas
 from stable_baselines3 import PPO
 
 # Importamos nuestro entorno y acciones
-from entorno_mus import MusEnvironment, MusAction, Carta
+from entorno_mus import MusEnvironment, MusAction, Carta, PALOS, RANGOS_REALES
 
-# --- 1. CONFIGURACIÓN DE PYGAME ---
+# --- 1. CONFIGURACIÓN DE PYGAME (Sin cambios) ---
 pygame.init()
-
-# Colores
 COLOR_BLANCO = (255, 255, 255)
 COLOR_NEGRO = (0, 0, 0)
 COLOR_GRIS_CLARO = (200, 200, 200)
-COLOR_GRIS_OSCURO = (100, 100, 100)
 COLOR_VERDE_FONDO = (0, 100, 25)
 COLOR_BOTON = (50, 50, 150)
 COLOR_BOTON_HOVER = (80, 80, 180)
+COLOR_AMARILLO = (255, 255, 0)
+COLOR_ROJO_CLARO = (255, 150, 150)
 
-# Pantalla
 ANCHO, ALTO = 1000, 700
 PANTALLA = pygame.display.set_mode((ANCHO, ALTO))
 pygame.display.set_caption("Mus: Humano vs IA")
 
-# Fuentes
 try:
     FONT_GRANDE = pygame.font.SysFont('Arial', 32)
     FONT_MEDIANA = pygame.font.SysFont('Arial', 24)
     FONT_PEQUENA = pygame.font.SysFont('Arial', 18)
-except: # Fallback por si Arial no está
+except:
     FONT_GRANDE = pygame.font.Font(None, 40)
     FONT_MEDIANA = pygame.font.Font(None, 30)
     FONT_PEQUENA = pygame.font.Font(None, 24)
 
-# --- 2. EL RENDERIZADOR (LA "VISTA") ---
+# --- 2. CLASE MusRenderer (Modificada para mostrar cartas) ---
 
 class MusRenderer:
     def __init__(self, pantalla):
         self.pantalla = pantalla
-        self.button_rects = {} # Almacena {MusAction: pygame.Rect}
+        self.button_rects = {} 
+        self.card_images = {}
+        self.card_size = (80, 120) 
+        self.asset_path = os.path.join("assets", "cartas")
+
+        print("Cargando imágenes de cartas...")
+        try:
+            for palo in PALOS:
+                for rango in RANGOS_REALES:
+                    key = f"{rango}_{palo}"
+                    filename = f"{key}.png".lower() 
+                    path = os.path.join(self.asset_path, filename)
+                    image = pygame.image.load(path).convert_alpha()
+                    image = pygame.transform.scale(image, self.card_size)
+                    self.card_images[key] = image
+            
+            path = os.path.join(self.asset_path, "dorso.png")
+            self.dorso_img = pygame.image.load(path).convert_alpha()
+            self.dorso_img = pygame.transform.scale(self.dorso_img, self.card_size)
+            print("¡Imágenes cargadas con éxito!")
+            
+        except FileNotFoundError as e:
+            print(f"--- ¡ERROR DE ASSETS! ---")
+            print(f"No se pudo encontrar la imagen: {e.filename}")
+            pygame.quit()
+            sys.exit()
 
     def draw_card(self, carta_obj, x, y, face_down=False):
-        """Dibuja una sola carta (con texto, sin imágenes)."""
-        ancho_carta, alto_carta = 80, 120
-        card_rect = pygame.Rect(x, y, ancho_carta, alto_carta)
-        
         if face_down:
-            pygame.draw.rect(self.pantalla, COLOR_BOTON, card_rect, border_radius=5)
-            pygame.draw.rect(self.pantalla, COLOR_BLANCO, card_rect, 3, 5)
+            self.pantalla.blit(self.dorso_img, (x, y))
         else:
-            pygame.draw.rect(self.pantalla, COLOR_BLANCO, card_rect, border_radius=5)
-            pygame.draw.rect(self.pantalla, COLOR_NEGRO, card_rect, 2, 5)
-            
-            # Dibujar texto de la carta
-            txt_rango = FONT_PEQUENA.render(carta_obj.rango, True, COLOR_NEGRO)
-            txt_palo = FONT_PEQUENA.render(carta_obj.palo, True, COLOR_NEGRO)
-            self.pantalla.blit(txt_rango, (x + 10, y + 10))
-            self.pantalla.blit(txt_palo, (x + 10, y + 40))
-
-    def draw_game_state(self, env, legal_actions, es_turno_humano, last_ia_action=None): # <-- MODIFICADO
-            """Dibuja toda la pantalla: manos, puntuaciones y botones."""
-            self.pantalla.fill(COLOR_VERDE_FONDO)
-            self.button_rects.clear() 
-
-            # --- 1. Dibujar Manos (Sin cambios) ---
-            if env.manos[0]:
-                for i, carta in enumerate(env.manos[0].cartas):
-                    self.draw_card(carta, 300 + i * 100, ALTO - 150)
-            if env.manos[1]:
-                for i in range(4):
-                    self.draw_card(None, 300 + i * 100, 30, face_down=True)
-
-            # --- 2. Dibujar Puntuaciones y Estado (Sin cambios) ---
-            txt_score = FONT_GRANDE.render(f"PUNTUACIÓN   [Humano: {env.scores[0]} | IA: {env.scores[1]}]", True, COLOR_BLANCO)
-            self.pantalla.blit(txt_score, (ANCHO // 2 - txt_score.get_width() // 2, 200))
-            txt_lance = FONT_MEDIANA.render(f"Lance: {env.current_lance} | Estado: {env.lance_state}", True, COLOR_BLANCO)
-            self.pantalla.blit(txt_lance, (ANCHO // 2 - txt_lance.get_width() // 2, 250))
-            txt_mano = FONT_MEDIANA.render(f"J{env.mano_player_idx} es 'mano'", True, COLOR_BLANCO)
-            self.pantalla.blit(txt_mano, (ANCHO // 2 - txt_mano.get_width() // 2, 290))
-
-            # --- 3. Dibujar Botones de Acción (MODIFICADO) ---
-            if es_turno_humano:
-                txt_turno = FONT_GRANDE.render("¡ES TU TURNO!", True, (255, 255, 0)) # Amarillo
-                self.pantalla.blit(txt_turno, (ANCHO // 2 - txt_turno.get_width() // 2, 350))
-                
-                # --- ¡¡AQUÍ ESTÁ EL ARREGLO!! ---
-                # Si estamos respondiendo a una apuesta, mostrar qué dijo la IA
-                if env.lance_state == "BET_MADE" and last_ia_action:
-                    txt_IA_dijo = FONT_MEDIANA.render(f"La IA ha dicho: {last_ia_action.name}", True, (255, 150, 150)) # Rojo claro
-                    self.pantalla.blit(txt_IA_dijo, (ANCHO // 2 - txt_IA_dijo.get_width() // 2, 470))
-                # --- FIN DEL ARREGLO ---
-
-                ancho_boton = 150
-                alto_boton = 50
-                num_botones = len(legal_actions)
-                start_x = (ANCHO - (num_botones * (ancho_boton + 20) - 20)) // 2
-                
-                mouse_pos = pygame.mouse.get_pos()
-                
-                for i, action in enumerate(legal_actions):
-                    button_rect = pygame.Rect(start_x + i * (ancho_boton + 20), 400, ancho_boton, alto_boton)
-                    self.button_rects[action] = button_rect
-                    
-                    color = COLOR_BOTON_HOVER if button_rect.collidepoint(mouse_pos) else COLOR_BOTON
-                    
-                    pygame.draw.rect(self.pantalla, color, button_rect, border_radius=10)
-                    txt_accion = FONT_MEDIANA.render(action.name, True, COLOR_BLANCO)
-                    txt_rect = txt_accion.get_rect(center=button_rect.center)
-                    self.pantalla.blit(txt_accion, txt_rect)
+            key = f"{carta_obj.rango}_{carta_obj.palo}"
+            if key in self.card_images:
+                self.pantalla.blit(self.card_images[key], (x, y))
             else:
-                txt_turno = FONT_GRANDE.render("Pensando IA...", True, COLOR_GRIS_CLARO)
-                self.pantalla.blit(txt_turno, (ANCHO // 2 - txt_turno.get_width() // 2, 350))
+                pygame.draw.rect(self.pantalla, (255, 0, 0), (x, y, self.card_size[0], self.card_size[1]))
 
-            pygame.display.flip()
-
-    def wait_for_human_action(self) -> MusAction:
-        """
-        Bucle de espera. Pausa el juego hasta que el humano hace clic.
-        Devuelve la MusAction que el humano ha elegido.
-        """
-        while True:
-            # Volvemos a dibujar los botones para el efecto "hover"
-            pygame.event.pump() # Procesar eventos para que la ventana no se cuelgue
+    # --- ¡NUEVA FUNCIÓN! ---
+    def reveal_hands(self, mano_humano, mano_ia):
+        """Dibuja ambas manos boca arriba al final del lance."""
+        print("Mostrando cartas al final de la mano...")
+        self.pantalla.fill(COLOR_VERDE_FONDO)
+        # Mano Humano (ya visible)
+        for i, carta in enumerate(mano_humano.cartas):
+            self.draw_card(carta, 300 + i * 100, ALTO - 150)
             
+        # Mano IA (ahora boca arriba)
+        for i, carta in enumerate(mano_ia.cartas):
+            self.draw_card(carta, 300 + i * 100, 30, face_down=False) # <- face_down=False
+
+        # Texto
+        txt_reveal = FONT_GRANDE.render("FIN DE LA MANO", True, COLOR_AMARILLO)
+        self.pantalla.blit(txt_reveal, (ANCHO // 2 - txt_reveal.get_width() // 2, 350))
+        txt_continue = FONT_MEDIANA.render("Pulsa Enter para la siguiente mano...", True, COLOR_BLANCO)
+        self.pantalla.blit(txt_continue, (ANCHO // 2 - txt_continue.get_width() // 2, 400))
+        
+        pygame.display.flip()
+
+        # Esperar a que el humano pulse Enter
+        waiting = True
+        while waiting:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
-                
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                    waiting = False
+            pygame.time.wait(50) # No consumir 100% CPU
+
+    # --- FUNCIÓN draw_game_state (Sin cambios) ---
+    def draw_game_state(self, env, legal_actions, es_turno_humano, last_ia_action=None):
+        self.pantalla.fill(COLOR_VERDE_FONDO)
+        self.button_rects.clear() 
+
+        # 1. Dibujar Manos
+        if env.manos[0]:
+            for i, carta in enumerate(env.manos[0].cartas):
+                self.draw_card(carta, 300 + i * 100, ALTO - 150)
+        
+        if env.manos[1]:
+            for i in range(4):
+                # La mano de la IA siempre se dibuja boca abajo durante el juego
+                self.draw_card(None, 300 + i * 100, 30, face_down=True) 
+
+        # 2. Dibujar Puntuaciones y Estado
+        txt_score = FONT_GRANDE.render(f"PUNTUACIÓN   [Humano: {env.scores[0]} | IA: {env.scores[1]}]", True, COLOR_BLANCO)
+        self.pantalla.blit(txt_score, (ANCHO // 2 - txt_score.get_width() // 2, 200))
+        txt_lance = FONT_MEDIANA.render(f"Lance: {env.current_lance} | Estado: {env.lance_state}", True, COLOR_BLANCO)
+        self.pantalla.blit(txt_lance, (ANCHO // 2 - txt_lance.get_width() // 2, 250))
+        txt_mano = FONT_MEDIANA.render(f"J{env.mano_player_idx} es 'mano'", True, COLOR_BLANCO)
+        self.pantalla.blit(txt_mano, (ANCHO // 2 - txt_mano.get_width() // 2, 290))
+
+        # 3. Dibujar Botones de Acción
+        if es_turno_humano:
+            txt_turno = FONT_GRANDE.render("¡ES TU TURNO!", True, COLOR_AMARILLO) 
+            self.pantalla.blit(txt_turno, (ANCHO // 2 - txt_turno.get_width() // 2, 350))
+            
+            if env.lance_state == "BET_MADE" and last_ia_action:
+                txt_IA_dijo = FONT_MEDIANA.render(f"La IA ha dicho: {last_ia_action.name}", True, COLOR_ROJO_CLARO)
+                self.pantalla.blit(txt_IA_dijo, (ANCHO // 2 - txt_IA_dijo.get_width() // 2, 470))
+
+            ancho_boton = 150
+            alto_boton = 50
+            num_botones = len(legal_actions)
+            start_x = (ANCHO - (num_botones * (ancho_boton + 20) - 20)) // 2
+            mouse_pos = pygame.mouse.get_pos()
+            
+            for i, action in enumerate(legal_actions):
+                button_rect = pygame.Rect(start_x + i * (ancho_boton + 20), 400, ancho_boton, alto_boton)
+                self.button_rects[action] = button_rect
+                color = COLOR_BOTON_HOVER if button_rect.collidepoint(mouse_pos) else COLOR_BOTON
+                pygame.draw.rect(self.pantalla, color, button_rect, border_radius=10)
+                txt_accion = FONT_MEDIANA.render(action.name, True, COLOR_BLANCO)
+                txt_rect = txt_accion.get_rect(center=button_rect.center)
+                self.pantalla.blit(txt_accion, txt_rect)
+        else:
+            txt_turno = FONT_GRANDE.render("Pensando IA...", True, COLOR_GRIS_CLARO)
+            self.pantalla.blit(txt_turno, (ANCHO // 2 - txt_turno.get_width() // 2, 350))
+
+        pygame.display.flip()
+
+    # --- FUNCIÓN wait_for_human_action (Sin cambios) ---
+    def wait_for_human_action(self) -> MusAction:
+        while True:
+            pygame.event.pump()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    # Comprobar si el clic fue en un botón
                     for action, rect in self.button_rects.items():
                         if rect.collidepoint(event.pos):
-                            return action # ¡Acción seleccionada!
-                            
-            # Esto es necesario para que el hover se actualice
-            # (No es lo más eficiente, pero es lo más claro)
-            # Re-renderizamos los botones (pero no toda la pantalla)
+                            return action
+            
             mouse_pos = pygame.mouse.get_pos()
             for action, button_rect in self.button_rects.items():
                 color = COLOR_BOTON_HOVER if button_rect.collidepoint(mouse_pos) else COLOR_BOTON
@@ -147,19 +180,28 @@ class MusRenderer:
                 self.pantalla.blit(txt_accion, txt_rect)
             pygame.display.flip()
 
+# --- 3. EL BUCLE PRINCIPAL (Modificado) ---
 
-# --- 3. EL BUCLE PRINCIPAL DEL JUEGO ---
+# --- ¡NUEVO! Colores para la terminal ---
+class TermColors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
 
 def main():
-    MODEL_PATH = "./models/mus_ppo/mus_agent_1M.zip" 
+    MODEL_PATH = "./models/mus_ppo_v2/mus_agent_v2_norm_1M.zip" # Carga el modelo que quieras probar
     
     if not os.path.exists(MODEL_PATH):
-        print(f"Error: No se encontró el modelo en {MODEL_PATH}")
+        print(f"{TermColors.FAIL}Error: No se encontró el modelo en {MODEL_PATH}{TermColors.ENDC}")
         return
 
-    print(f"Cargando modelo IA desde {MODEL_PATH}...")
+    print(f"{TermColors.OKGREEN}Cargando modelo IA desde {MODEL_PATH}...{TermColors.ENDC}")
     model = PPO.load(MODEL_PATH)
-    print("Modelo cargado. ¡Empieza la partida!")
+    print(f"{TermColors.OKGREEN}Modelo cargado. ¡Empieza la partida!{TermColors.ENDC}")
 
     env = MusEnvironment(target_score=30)
     renderer = MusRenderer(PANTALLA)
@@ -167,42 +209,69 @@ def main():
     obs_vector, info = env.reset(seed=random.randint(0, 10000))
     done = False
     
-    last_ia_action = None # <-- NUEVA LÍNEA: Para recordar qué hizo la IA
-    
+    last_ia_action = None 
+    last_lance = "GRANDE" # Para saber cuándo termina una mano
+
     while not done:
         current_player_id = env.current_player_idx
         es_turno_humano = (current_player_id == 0)
         legal_actions = env._get_legal_actions()
         
-        # MODIFICADO: Pasamos la última acción de la IA al renderizador
+        # --- ¡MODIFICACIÓN! Lógica de Mostrar Cartas al final de mano ---
+        if env.current_lance == "GRANDE" and last_lance == "JUEGO":
+            # Acabamos de pasar de JUEGO a GRANDE, ¡es el final de la mano!
+            renderer.reveal_hands(env.manos[0], env.manos[1])
+        last_lance = env.current_lance
+        # --- Fin de la modificación ---
+
         renderer.draw_game_state(env, legal_actions, es_turno_humano, last_ia_action)
 
         action_value = None
-        action_enum = None # <-- NUEVA LÍNEA: Para almacenar la acción como Enum
+        action_enum = None
+
+        # --- Imprimir info clara en la terminal ---
+        print("\n" + "="*30)
+        print(f"{TermColors.HEADER}PUNTUACIÓN: [Humano: {env.scores[0]} | IA: {env.scores[1]}]{TermColors.ENDC}")
+        print(f"Turno de: {'Humano (J0)' if es_turno_humano else 'IA (J1)'}")
+        print(f"Posición: J{env.mano_player_idx} es 'mano'")
+        print(f"Lance: {TermColors.BOLD}{env.current_lance} | {env.lance_state}{TermColors.ENDC}")
+        print(f"Mano Humano: {env.manos[0]}") # Muestra tu mano en terminal
+        print(f"Acciones Legales: {[a.name for a in legal_actions]}")
+        # --- Fin de la info en terminal ---
 
         if es_turno_humano:
             action_enum = renderer.wait_for_human_action()
             action_value = action_enum.value
-            last_ia_action = None # Limpiamos la acción de la IA, ya que hemos respondido
+            last_ia_action = None 
+            print(f"{TermColors.OKBLUE}TÚ ELIGES: {action_enum.name}{TermColors.ENDC}")
             
         else:
             obs_vector_ia = env._get_observation(player_idx=1) 
-            action_tuple = model.predict(obs_vector_ia, deterministic=True)
+           # action_tuple = model.predict(obs_vector_ia, deterministic=True) # Juega su "mejor" jugada
+            action_tuple = model.predict(obs_vector_ia, deterministic=False) # Descomenta para jugar contra la IA "farolera"
+            
             action_value = action_tuple[0].item()
+            action_enum = MusAction(action_value)
+            last_ia_action = action_enum
             
-            action_enum = MusAction(action_value) # <-- NUEVA LÍNEA
-            last_ia_action = action_enum          # <-- NUEVA LÍNEA: Recordamos la acción
-            
-            pygame.time.wait(1000) 
+            print(f"{TermColors.WARNING}LA IA ELIGE: {action_enum.name}{TermColors.ENDC}") # <-- ¡"Voz" de la IA!
+            time.sleep(1.5) # Pausa de 1.5s para poder leer la jugada
 
         obs_vector, reward, terminated, truncated, info = env.step(action_value)
         done = terminated or truncated
+        
+        if reward != 0:
+            print(f"{TermColors.OKGREEN}*** Recompensa para J{current_player_id}: {reward} ***{TermColors.ENDC}")
 
     # --- Fin de la partida (Sin cambios) ---
-    print("¡Partida terminada!")
+    print(f"{TermColors.HEADER}¡Partida terminada!{TermColors.ENDC}")
+    # Mostrar las cartas de la última mano
+    renderer.reveal_hands(env.manos[0], env.manos[1])
+    
     while True:
+        PANTALLA.fill(COLOR_VERDE_FONDO)
         texto_final = "¡HAS GANADO!" if env.scores[0] > env.scores[1] else "HA GANADO LA IA"
-        txt_render = FONT_GRANDE.render(texto_final, True, (255, 255, 0))
+        txt_render = FONT_GRANDE.render(texto_final, True, COLOR_AMARILLO)
         txt_rect = txt_render.get_rect(center=(ANCHO // 2, ALTO // 2))
         PANTALLA.blit(txt_render, txt_rect)
         

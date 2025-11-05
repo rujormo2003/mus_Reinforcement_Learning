@@ -203,19 +203,32 @@ class MusEnvironment(gym.Env):
             self.game_over = True
     def _get_next_player(self): return 1 - self.current_player_idx
     def _handle_action_announce(self, action):
-        self.anuncios[self.current_player_idx] = action; reward = 0
-        if self.anuncios[0] and self.anuncios[1]:
-            j0_t, j1_t = (self.anuncios[0]==MusAction.TENGO), (self.anuncios[1]==MusAction.TENGO)
-            if j0_t and not j1_t:
-                self.scores[0] += 1; reward = 1 if self.current_player_idx == 0 else 0
-            elif not j0_t and j1_t:
-                self.scores[1] += 1; reward = 1 if self.current_player_idx == 1 else 0
-            elif j0_t and j1_t:
-                self.lance_state = "START"; self.current_player_idx = self.mano_player_idx; return 0
-            self._check_game_over(); self._move_to_next_lance()
-        else:
-            self.current_player_idx = self._get_next_player()
-        return reward
+            self.anuncios[self.current_player_idx] = action; 
+            
+            reward = 0.0 
+            
+            if self.anuncios[0] and self.anuncios[1]:
+                j0_t, j1_t = (self.anuncios[0]==MusAction.TENGO), (self.anuncios[1]==MusAction.TENGO)
+                
+                if j0_t and not j1_t:
+                    self.scores[0] += 1
+                    if self.current_player_idx == 0: reward = 1.0 / self.target_score
+                    
+                elif not j0_t and j1_t:
+                    self.scores[1] += 1
+                    if self.current_player_idx == 1: reward = 1.0 / self.target_score
+                    
+                elif j0_t and j1_t:
+                    self.lance_state = "START"; self.current_player_idx = self.mano_player_idx
+                    return 0.0 
+                else:
+                    pass 
+                
+                self._check_game_over(); self._move_to_next_lance()
+            else:
+                self.current_player_idx = self._get_next_player()
+                
+            return reward
     def _handle_action_start(self, action):
         player = self.current_player_idx
         if action == MusAction.PASO:
@@ -228,21 +241,34 @@ class MusEnvironment(gym.Env):
             self.lance_state = "BET_MADE"; self.lance_bet = self.target_score; self.player_who_bet = player
             self.current_player_idx = self._get_next_player()
     def _handle_action_response(self, action):
-        responder = self.current_player_idx; better = self.player_who_bet; reward = 0
-        if action == MusAction.QUIERO:
-            winner = self._resolve_lance_winner(); points = self.lance_bet
-            self.scores[winner] += points
-            reward = points if winner == responder else -points
-        elif action == MusAction.NO_QUIERO:
-            self.scores[better] += 1; reward = -1
-        elif action == MusAction.ORDAGO:
-            if self.lance_bet == self.target_score: return self._handle_action_response(MusAction.QUIERO)
-            else:
-                self.lance_state = "BET_MADE"; self.lance_bet = self.target_score
-                self.player_who_bet = responder; self.current_player_idx = better
-                return 0
-        self._check_game_over(); self._move_to_next_lance()
-        return reward
+            responder = self.current_player_idx; better = self.player_who_bet; 
+            
+            reward = 0.0
+
+            if action == MusAction.QUIERO:
+                winner = self._resolve_lance_winner(); points = self.lance_bet
+                self.scores[winner] += points
+                
+                if winner == responder:
+                    reward = points / self.target_score
+                else:
+                    reward = -points / self.target_score
+                
+            elif action == MusAction.NO_QUIERO:
+                self.scores[better] += 1
+                
+                reward = -1.0 / self.target_score # El jugador actual (responder) perdió
+                
+            elif action == MusAction.ORDAGO:
+                if self.lance_bet == self.target_score: 
+                    return self._handle_action_response(MusAction.QUIERO)
+                else: 
+                    self.lance_state = "BET_MADE"; self.lance_bet = self.target_score
+                    self.player_who_bet = responder; self.current_player_idx = better
+                    return 0.0 
+
+            self._check_game_over(); self._move_to_next_lance()
+            return reward
 
     def _start_new_hand(self):
         self.mano_player_idx = 1 - self.mano_player_idx
@@ -353,17 +379,16 @@ class MusEnvironment(gym.Env):
             legal_actions = self._get_legal_actions()
 
             if action not in legal_actions:
-                reward = -20 # Penalización MUY fuerte por hacer trampas/bugs
-                
-                if not legal_actions:
-                    self.game_over = True
-                    obs = self._get_observation(player_id)
-                    return obs, reward, True, False, {"error": "Estado bloqueado sin acciones"}
-
-                action = random.choice(legal_actions) 
-            
+                        # --- ¡CAMBIO! Recompensa normalizada ---
+                        reward = -1.0 # El castigo máximo
+                        
+                        if not legal_actions:
+                            # ... (resto del bloque de error) ...
+                            obs = self._get_observation(player_id)
+                            return obs, reward, True, False, {"error": "Estado bloqueado sin acciones"}        
+                        action = random.choice(legal_actions) 
+                    
             else:
-                # La acción fue legal
                 reward = 0
             
             # 3. Guardar acción en el historial NUMÉRICO
