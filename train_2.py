@@ -7,8 +7,8 @@ from stable_baselines3.common.env_checker import check_env
 from entorno_v2 import MusEnvConBots
 
 # --- 1. Creación de Directorios ---
-log_dir = "./logs/mus_ppo_v2/" # Nuevo log dir
-model_dir = "./models/mus_ppo_v2/" # Nuevo model dir
+log_dir = "./logs/mus_ppo_v3/" # Nuevo log dir
+model_dir = "./models/mus_ppo_v3/" # Nuevo model dir
 os.makedirs(log_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
@@ -49,6 +49,6 @@ model.learn(
 )
 
 # --- 5. Guardar el Modelo V2 ---
-model_path = os.path.join(model_dir, "mus_agent_v2_norm_1M")
+model_path = os.path.join(model_dir, "mus_agent_v3_norm_1M")
 model.save(model_path)
 print(f"Modelo V2 guardado en: {model_path}")

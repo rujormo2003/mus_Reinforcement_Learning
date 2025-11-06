@@ -76,7 +76,7 @@ def evaluar_agente(model, opponent_agent, num_partidas=1000):
 
 if __name__ == "__main__":
     
-    MODEL_PATH = "./models/mus_ppo_v2/mus_agent_v2_norm_1M" 
+    MODEL_PATH = "./models/mus_ppo_v3/mus_agent_v3_norm_1M" 
     
     if not os.path.exists(f"{MODEL_PATH}.zip"):
         print(f"Error: No se encontró el modelo en {MODEL_PATH}.zip")

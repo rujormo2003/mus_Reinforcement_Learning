@@ -193,7 +193,7 @@ class TermColors:
     BOLD = '\033[1m'
 
 def main():
-    MODEL_PATH = "./models/mus_ppo_v2/mus_agent_v2_norm_1M.zip" # Carga el modelo que quieras probar
+    MODEL_PATH = "./models/mus_ppo_v3/mus_agent_v3_norm_1M.zip" # Carga el modelo que quieras probar
     
     if not os.path.exists(MODEL_PATH):
         print(f"{TermColors.FAIL}Error: No se encontró el modelo en {MODEL_PATH}{TermColors.ENDC}")
@@ -211,18 +211,23 @@ def main():
     
     last_ia_action = None 
     last_lance = "GRANDE" # Para saber cuándo termina una mano
+    old_manos = (None, None)
 
     while not done:
         current_player_id = env.current_player_idx
         es_turno_humano = (current_player_id == 0)
         legal_actions = env._get_legal_actions()
         
-        # --- ¡MODIFICACIÓN! Lógica de Mostrar Cartas al final de mano ---
+        # --- ¡MODIFICACIÓN CLAVE! ---
+        # Guarda las manos ANTES de que el step() las pueda cambiar
+        if env.manos[0]:
+            old_manos = (env.manos[0], env.manos[1])
+        
+        # Comprueba el estado de la mano ANTERIOR
         if env.current_lance == "GRANDE" and last_lance == "JUEGO":
-            # Acabamos de pasar de JUEGO a GRANDE, ¡es el final de la mano!
-            renderer.reveal_hands(env.manos[0], env.manos[1])
+            # ¡Usa las manos guardadas (old_manos) para el reveal!
+            renderer.reveal_hands(old_manos[0], old_manos[1])
         last_lance = env.current_lance
-        # --- Fin de la modificación ---
 
         renderer.draw_game_state(env, legal_actions, es_turno_humano, last_ia_action)
 
@@ -230,13 +235,28 @@ def main():
         action_enum = None
 
         # --- Imprimir info clara en la terminal ---
+# --- Imprimir info clara en la terminal (VERSIÓN DEPURACIÓN) ---
         print("\n" + "="*30)
         print(f"{TermColors.HEADER}PUNTUACIÓN: [Humano: {env.scores[0]} | IA: {env.scores[1]}]{TermColors.ENDC}")
         print(f"Turno de: {'Humano (J0)' if es_turno_humano else 'IA (J1)'}")
         print(f"Posición: J{env.mano_player_idx} es 'mano'")
         print(f"Lance: {TermColors.BOLD}{env.current_lance} | {env.lance_state}{TermColors.ENDC}")
-        print(f"Mano Humano: {env.manos[0]}") # Muestra tu mano en terminal
-        print(f"Acciones Legales: {[a.name for a in legal_actions]}")
+
+        # --- ¡¡NUEVO BLOQUE DE DEPURACIÓN!! ---
+        # Mostramos el estado de AMBAS manos, calculado AHORA MISMO.
+        if env.manos[0]: # Asegurarse de que las manos están repartidas
+            humano_mano = env.manos[0]
+            ia_mano = env.manos[1]
+            
+            print(f"Mano Humano (J0): {humano_mano}")
+            print(f"  -> Humano TIENE JUEGO?: {TermColors.BOLD}{humano_mano.tiene_juego()}{TermColors.ENDC} (Suma: {humano_mano.get_juego_valor()})")
+            
+            print(f"Mano IA (J1): {ia_mano}")
+            print(f"  -> IA TIENE JUEGO?:     {TermColors.BOLD}{ia_mano.tiene_juego()}{TermColors.ENDC} (Suma: {ia_mano.get_juego_valor()})")
+        # --- FIN DEL BLOQUE DE DEPURACIÓN ---
+            
+        print(f"{TermColors.OKGREEN}Acciones Legales para J{current_player_id}: {[a.name for a in legal_actions]}{TermColors.ENDC}")
+        # --- Fin de la info en terminal ---
         # --- Fin de la info en terminal ---
 
         if es_turno_humano:
