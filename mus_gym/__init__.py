@@ -8,3 +8,9 @@ gym.register(
     entry_point="mus_gym.mus_env:MusEnvironment", 
     kwargs={"target_score": 30},
 )
+
+gym.register(
+    id="Mus-v1",
+    entry_point="mus_gym.mus_env_v2:MusEnvConBots", 
+    kwargs={"target_score": 30},
+)

@@ -1,5 +1,7 @@
+# mus_gym/bots_mus.py
 import random
-from entorno_mus import MusAction 
+# CORRECCIÓN: Importa desde el paquete local
+from .mus_enums import MusAction 
 
 
 class RandomAgent:
@@ -45,11 +47,17 @@ class BasicoAgent:
         if lance_state == "START":
             mi_jugada_es_buena = False
             if current_lance == 'GRANDE':
+                # Juega "de manual": solo apuesta con Reyes
                 mi_jugada_es_buena = (my_hand_info["valores"][0] == 10)
             elif current_lance == 'CHICA':
+                # Solo apuesta con Ases
                 mi_jugada_es_buena = (my_hand_info["valores"][3] == 1)
-            elif current_lance in ['PARES', 'JUEGO']:
-                mi_jugada_es_buena = True 
+            elif current_lance == 'PARES':
+                # Apuesta si tiene algo (no es 'Ninguno')
+                mi_jugada_es_buena = (my_hand_info["pares"]["tipo"] != 'Ninguno')
+            elif current_lance == 'JUEGO':
+                 # Apuesta si tiene juego (no es 'Punto')
+                mi_jugada_es_buena = (my_hand_info["juego"] != 31) and (my_hand_info["juego"] > 0)
             
             if mi_jugada_es_buena and MusAction.ENVIDO in legal_actions:
                 return MusAction.ENVIDO
@@ -57,6 +65,7 @@ class BasicoAgent:
                 return MusAction.PASO
 
         elif lance_state == "BET_MADE":
+            # Lógica para responder a una apuesta
             mi_jugada_es_buena = False
             if current_lance == 'GRANDE':
                 mi_jugada_es_buena = (my_hand_info["valores"][0] == 10)
@@ -65,11 +74,12 @@ class BasicoAgent:
             elif current_lance == 'PARES':
                 mi_jugada_es_buena = (my_hand_info["pares"]["tipo"] != 'Ninguno')
             elif current_lance == 'JUEGO':
-                mi_jugada_es_buena = my_hand_info["tiene_juego"]
+                mi_jugada_es_buena = (my_hand_info["juego"] > 0)
 
             if mi_jugada_es_buena and MusAction.QUIERO in legal_actions:
                 return MusAction.QUIERO
             else:
                 return MusAction.NO_QUIERO
-                
+        
+        # Fallback por si algo falla
         return random.choice(legal_actions)

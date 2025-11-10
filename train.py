@@ -1,62 +1,47 @@
-import os
+# train.py
+import gymnasium as gym
+import mus_gym  # noqa: F401
 from stable_baselines3 import PPO
-from stable_baselines3.common.env_checker import check_env
+from sb3_contrib import RecurrentPPO
+from stable_baselines3.common.evaluation import evaluate_policy
+import time
 
-# Importa nuestra clase de entorno desde el otro archivo
-from entorno_mus import MusEnvironment, MusAction 
+# --- 2. Crear el entorno ---
+# SB3 gestiona la vectorización por ti
+env = gym.make("Mus-v0")
+print(f"Espacio de Observación: {env.observation_space.shape}")
+print(f"Espacio de Acción: {env.action_space.n}")
 
-# --- 1. Creación de Directorios ---
-log_dir = "./logs/mus_ppo/"
-model_dir = "./models/mus_ppo/"
-os.makedirs(log_dir, exist_ok=True)
-os.makedirs(model_dir, exist_ok=True)
-
-# --- 2. Instanciar el Entorno ---
-print("Creando el entorno de Mus...")
-env = MusEnvironment(target_score=30)
-
-# (Opcional pero RECOMENDADO) Comprueba si nuestro entorno sigue las reglas de Gym
-check_env(env)
-print("¡Comprobación del entorno superada!")
-
-# --- 3. Definición de Hiperparámetros ---
-# (Estos son los que discutimos)
-policy_kwargs = dict(net_arch=[128, 128]) # Dos capas ocultas de 128 neuronas
-
-# --- 4. Crear el Modelo ---
-# Esta es la estrategia "Deep PPO" con "Self-Play" implícito.
-# El agente aprenderá a jugar en ambas posiciones (mano y postre)
-# simplemente viendo las diferentes observaciones que recibe.
-
-print("Creando el modelo PPO...")
-model = PPO(
-    policy="MlpPolicy",             # Red neuronal estándar (Multi-Layer Perceptron)
-    env=env,
-    verbose=1,                      # Imprime el progreso en la consola
-    n_steps=2048,                   # Pasos antes de cada actualización
-    batch_size=64,
-    gamma=0.99,                     # Descuento para recompensas futuras
-    ent_coef=0.05,                  # Coeficiente de entropía (exploración)
-    learning_rate=3e-4,             # 0.0003
-    policy_kwargs=policy_kwargs,
-    tensorboard_log=log_dir         
+# --- 3. Definir y Entrenar el Modelo ---
+# "MlpPolicy" es una política de red neuronal estándar
+model = RecurrentPPO(
+    "MlpLstmPolicy", 
+    env, 
+    verbose=1, # Imprime el progreso del entrenamiento
+    tensorboard_log="./logs/"
 )
 
-# --- 5. Entrenar el Modelo ---
-TIMESTEPS_TOTALES = 1000000
 
-print(f"Empezando entrenamiento por {TIMESTEPS_TOTALES} timesteps...")
+
+print("Iniciando entrenamiento...")
+start_time = time.time()
+
+# ¡Entrenar al agente!
 model.learn(
-    total_timesteps=TIMESTEPS_TOTALES,
-    tb_log_name="PPO_Mus_Run1",   
-    progress_bar=True            
+    total_timesteps=200_000,
+    tb_log_name="recurrent_ppo_mus_v0"
 )
 
-# --- 6. Guardar el Modelo ---
-model_path = os.path.join(model_dir, "mus_agent_1M_2")
-model.save(model_path)
+end_time = time.time()
+print(f"Entrenamiento completado en {end_time - start_time:.2f} segundos.")
 
-print(f"--- Entrenamiento Completado ---")
-print(f"Modelo guardado en: {model_path}")
-print("Puedes ver los resultados ejecutando:")
-print(f"tensorboard --logdir={log_dir}")
+# --- 4. Guardar el modelo ---
+model_path = "recurrent_ppo_mus_v0"
+model.save(model_path)
+print(f"Modelo guardado en {model_path}.zip")
+
+env.close()
+
+
+# Para ver el progreso, ejecuta en otra terminal:
+# tensorboard --logdir ./mus_tensorboard/
