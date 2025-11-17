@@ -6,7 +6,7 @@ from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.evaluation import evaluate_policy
 import time
 
-model = RecurrentPPO.load("recurrent_ppo_mus_v0")
+model = RecurrentPPO.load("recurrent_ppo_mus_v2")
 eval_env = gym.make("Mus-v0")
 
 

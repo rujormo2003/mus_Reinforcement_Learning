@@ -7,16 +7,17 @@ from stable_baselines3 import PPO
 import random
 
 # Importamos el entorno y las clases.
-# ¡IMPORTACIONES CORREGIDAS PARA APUNTAR A 'mus_env'!
 try:
+    # (Asumiendo que este script está en el directorio raíz,
+    # y 'mus_gym' es un subdirectorio)
     from mus_gym.mus_env import MusEnvironment
     from mus_gym.mus_enums import MusAction, MusLance, LanceState
     from mus_gym.mus_entities import Carta, Mano
     from mus_gym.mus_config import PALOS, RANGOS_REALES
 except ImportError:
     print("Error: No se pudo encontrar el paquete 'mus_gym'.")
-    print("Asegúrate de que el script está en el directorio correcto (fuera de 'mus_env')")
-    print("y que 'mus_env' es un paquete (contiene __init__.py)")
+    print("Asegúrate de que el script está en el directorio correcto (fuera de 'mus_gym')")
+    print("y que 'mus_gym' es un paquete (contiene __init__.py)")
     sys.exit(1)
 
 # --- 1. CONFIGURACIÓN Y CONSTANTES ---
@@ -57,7 +58,7 @@ except pygame.error:
     FONT_LOG = pygame.font.Font(None, 22)
 
 # Ruta del modelo
-MODEL_PATH = "recurrent_ppo_mus_v0.zip" # <-- CAMBIA ESTO A LA RUTA DE TU MODELO
+MODEL_PATH = "recurrent_ppo_mus_v2.zip" # <-- CAMBIA ESTO A LA RUTA DE TU MODELO
 ASSET_PATH = os.path.join("assets", "cartas")
 CARD_SIZE = (80, 120)
 
@@ -70,7 +71,7 @@ class GameState(Enum):
     REVEAL_HAND = 4
     GAME_OVER = 5
 
-# --- 2. CLASE MusRenderer (Muy mejorada) ---
+# --- 2. CLASE MusRenderer ---
 
 class MusRenderer:
     """ Gestiona toda la carga de assets y la lógica de dibujado. """
@@ -298,7 +299,7 @@ class MusRenderer:
         self.draw_text("Haz clic o pulsa [ESPACIO] para salir", FONT_MEDIANA, COLOR_GRIS_CLARO, ANCHO_TOTAL // 2, ALTO_TOTAL // 2 + 50, center=True)
         pygame.display.flip()
 
-# --- 3. CLASE Game (El nuevo motor) ---
+# --- 3. CLASE Game (El motor) ---
 
 class Game:
     """
@@ -307,7 +308,7 @@ class Game:
     """
     def __init__(self):
         self.pantalla = pygame.display.set_mode((ANCHO_TOTAL, ALTO_TOTAL))
-        pygame.display.set_caption("Mus: Humano vs IA (Refactorizado)")
+        pygame.display.set_caption("Mus: Humano vs IA")
         self.clock = pygame.time.Clock()
         self.renderer = MusRenderer(self.pantalla)
         
@@ -452,10 +453,18 @@ class Game:
             self.state = GameState.GAME_OVER
             self.add_log("¡¡¡PARTIDA TERMINADA!!!", COLOR_LOG_SISTEMA)
         
-        # Si la mano ha terminado (detectado por el cambio de JUEGO a GRANDE)
-        elif self.env.current_lance == MusLance.GRANDE and self.last_lance == MusLance.JUEGO:
+        # -----------------------------------------------------------------
+        # --- INICIO DE LA CORRECCIÓN ---
+        #
+        # Si el lance actual es GRANDE, y el lance anterior
+        # fue uno de los últimos lances (CHICA, PARES, o JUEGO),
+        # significa que la mano ha terminado y hemos dado la vuelta.
+        elif self.env.current_lance == MusLance.GRANDE and self.last_lance in [MusLance.CHICA, MusLance.PARES, MusLance.JUEGO]:
             self.state = GameState.REVEAL_HAND
             self.add_log("Fin de la mano. Mostrando cartas...", COLOR_LOG_SISTEMA)
+        #
+        # --- FIN DE LA CORRECCIÓN ---
+        # -----------------------------------------------------------------
         
         else:
             self.state = self.get_state_from_env()
@@ -464,6 +473,7 @@ class Game:
         """ Pide una acción a la IA y la ejecuta """
         self.state = GameState.AI_STEP # Cambiar de "THINKING" a "STEP"
         
+        # Usamos _get_observation del entorno base, que ya crea el vector
         obs_ia = self.env._get_observation(player_idx=1)
         
         # Juega de forma no-determinista (¡más divertido!)
