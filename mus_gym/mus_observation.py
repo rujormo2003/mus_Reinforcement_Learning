@@ -1,89 +1,93 @@
 # mus_gym/mus_observation.py
 import numpy as np
 from .mus_enums import MusLance, LanceState
-# Usamos un type hint forward para evitar la dependencia circular
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .mus_env import MusEnvironment
 
-
 class MusObservationBuilder:
-    """ Clase dedicada a construir el vector de observación. """
+    """ 
+    Constructor de observaciones simplificado (Feature Engineering).
     
-    # Definimos los tamaños aquí
-    OBS_MANO_SIZE = 11
-    OBS_JUEGO_SIZE = 11
-    OBS_HIST_SIZE = 6
+    Vector de tamaño 8:
+    [Reyes, Ases, Pares, Juego, LanceActual, EstadoApuesta, SoyMano, ScoreDiff]
+    """
+    
+    OBS_SIZE = 8
     
     @classmethod
     def get_observation_space_size(cls) -> int:
-        """ Devuelve el tamaño total del vector de observación. """
-        return cls.OBS_MANO_SIZE + cls.OBS_JUEGO_SIZE + cls.OBS_HIST_SIZE
+        return cls.OBS_SIZE
 
     @classmethod
     def build_observation(cls, env: 'MusEnvironment', player_idx: int) -> np.ndarray:
-        """ Construye el vector de observación para un jugador dado. """
-        
-        obs = np.zeros(cls.get_observation_space_size(), dtype=np.float32)
-        idx = 0
-        lances_list = list(MusLance)
-        lance_states_list = list(LanceState)
-
-        # --- 1. Info de Mano (11) ---
+        obs = np.zeros(cls.OBS_SIZE, dtype=np.float32)
         mano = env.manos[player_idx]
-        obs[idx : idx + 4] = mano.get_valores_comparacion()
-        idx += 4
+        vals = mano.get_valores_comparacion()
         
-        pares_info = mano.get_pares_info()
-        if pares_info['tipo'] == 'Pares':   obs[idx] = 1.0
-        elif pares_info['tipo'] == 'Medias': obs[idx + 1] = 1.0
-        elif pares_info['tipo'] == 'Duples': obs[idx + 2] = 1.0
-        idx += 3
-        
-        obs[idx] = pares_info['valor_principal']
-        obs[idx + 1] = pares_info.get('valor_secundario', 0)
-        idx += 2
-        
-        obs[idx] = 1.0 if mano.tiene_juego() else 0.0
-        obs[idx + 1] = mano.get_juego_valor()
-        idx += 2
-        assert idx == cls.OBS_MANO_SIZE
+        # --- 1. Reyes (Normalizado 0-1) ---
+        # Contamos cartas con valor 10 (Reyes y 3s en configuración Mus)
+        num_reyes = sum(1 for v in vals if v == 10)
+        obs[0] = num_reyes / 4.0
 
-        # --- 2. Info de Juego (11) ---
-        obs[idx] = env.scores[player_idx]
-        obs[idx + 1] = env.scores[1 - player_idx] 
-        idx += 2
-        obs[idx] = 1.0 if player_idx == env.mano_player_idx else 0.0
-        idx += 1
-        
-        if env.current_lance in lances_list:
-            obs[idx + lances_list.index(env.current_lance)] = 1.0
-        idx += len(lances_list)
-        
-        if env.current_lance_state in lance_states_list:
-            obs[idx + lance_states_list.index(env.current_lance_state)] = 1.0
-        idx += len(lance_states_list)
+        # --- 2. Ases (Normalizado 0-1) ---
+        # Contamos cartas con valor 1 (Ases y 2s)
+        num_ases = sum(1 for v in vals if v == 1)
+        obs[1] = num_ases / 4.0
 
-        obs[idx] = env.lance_bet
-        if env.player_who_bet is not None:
-            obs[idx + 1] = 1.0 if env.player_who_bet == player_idx else -1.0
-        idx += 2
-        assert idx == cls.OBS_MANO_SIZE + cls.OBS_JUEGO_SIZE
+        # --- 3. Escala de Pares ---
+        info_pares = mano.get_pares_info()
+        tipo_pares = info_pares['tipo']
+        if tipo_pares == 'Ninguno': obs[2] = 0.0
+        elif tipo_pares == 'Pares': obs[2] = 0.33
+        elif tipo_pares == 'Medias': obs[2] = 0.66
+        elif tipo_pares == 'Duples': obs[2] = 1.0
 
-        # --- 3. Historial (6) ---
-        hist_len = len(env.historial_acciones)
-        start_idx = idx
-        end_idx = start_idx + cls.OBS_HIST_SIZE
-        
-        if hist_len > 0:
-            num_a_tomar = min(hist_len, cls.OBS_HIST_SIZE)
-            hist_slice = env.historial_acciones[-num_a_tomar:]
-            obs[end_idx - num_a_tomar : end_idx] = hist_slice
-            if num_a_tomar < cls.OBS_HIST_SIZE:
-                obs[start_idx : end_idx - num_a_tomar] = -1.0
+        # --- 4. Escala de Juego (Ranking Correcto) ---
+        # Solo valoramos si tiene juego (31+). Si no, es 0.0 (Punto omitido).
+        obs[3] = cls._calcular_fuerza_juego(mano.get_juego_valor(), mano.tiene_juego())
+
+        # --- 5. Lance Actual ---
+        if env.current_lance == MusLance.GRANDE: obs[4] = 0.0
+        elif env.current_lance == MusLance.CHICA: obs[4] = 0.33
+        elif env.current_lance == MusLance.PARES: obs[4] = 0.66
+        elif env.current_lance == MusLance.JUEGO: obs[4] = 1.0
+        else: obs[4] = -1.0
+
+        # --- 6. Estado Apuesta ---
+        if env.current_lance_state == LanceState.START:
+            obs[5] = 0.0
         else:
-            obs[start_idx : end_idx] = -1.0
-        idx += cls.OBS_HIST_SIZE
-        
-        assert idx == cls.get_observation_space_size()
+            # 1.0 si es órdago (o apuesta supera target), 0.5 si es envite
+            obs[5] = 1.0 if env.lance_bet >= env.target_score else 0.5
+
+        # --- 7. Soy Mano ---
+        obs[6] = 1.0 if player_idx == env.mano_player_idx else 0.0
+
+        # --- 8. Diferencia de Puntos ---
+        diff = env.scores[player_idx] - env.scores[1 - player_idx]
+        obs[7] = diff / float(env.target_score)
+
         return obs
+
+    @staticmethod
+    def _calcular_fuerza_juego(puntos: int, tiene_juego: bool) -> float:
+        """ 
+        Asigna valor según la jerarquía estricta del Mus.
+        Como omitimos el Punto, si no hay juego devolvemos 0.0.
+        """
+        if not tiene_juego:
+            return 0.0
+            
+        # Ranking de PEOR (33) a MEJOR (31)
+        # Nota: 38 y 39 no existen en el Mus.
+        ranking_juego = [33, 34, 35, 36, 37, 40, 32, 31]
+        
+        if puntos in ranking_juego:
+            idx = ranking_juego.index(puntos)
+            # Mapeamos linealmente de ~0.1 a 1.0
+            # idx 0 (33) -> 0.125
+            # idx 7 (31) -> 1.0
+            return (idx + 1) / len(ranking_juego)
+            
+        return 0.0 # Fallback

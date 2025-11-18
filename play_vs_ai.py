@@ -5,6 +5,7 @@ import time
 from enum import Enum
 from stable_baselines3 import PPO
 import random
+import numpy as np
 
 # Importamos el entorno y las clases.
 try:
@@ -300,6 +301,7 @@ class MusRenderer:
         pygame.display.flip()
 
 # --- 3. CLASE Game (El motor) ---
+# --- 3. CLASE Game (El motor) ---
 
 class Game:
     """
@@ -308,7 +310,7 @@ class Game:
     """
     def __init__(self):
         self.pantalla = pygame.display.set_mode((ANCHO_TOTAL, ALTO_TOTAL))
-        pygame.display.set_caption("Mus: Humano vs IA")
+        pygame.display.set_caption("Mus: Humano vs IA (LSTM)")
         self.clock = pygame.time.Clock()
         self.renderer = MusRenderer(self.pantalla)
         
@@ -317,10 +319,17 @@ class Game:
         self.running = True
         self.state = GameState.LOADING
         
+        # Variables de estado del juego
         self.obs_vector = None
         self.last_ia_action = None
         self.old_manos = (None, None)
         self.last_lance = None
+        
+        # --- MEMORIA LSTM (CRUCIAL) ---
+        # Almacena los estados ocultos de la red neuronal entre pasos.
+        # Si no se pasan estos estados, la IA tendrá "amnesia".
+        self._last_lstm_states = None
+        self._last_episode_starts = np.ones((1,), dtype=bool)
         
         self.message_log = []
         self.ai_think_timer = 0
@@ -331,16 +340,21 @@ class Game:
     def load_model_and_env(self):
         if not os.path.exists(MODEL_PATH):
             print(f"Error: No se encontró el modelo en {MODEL_PATH}")
-            self.add_log(f"Error: Modelo no encontrado en {MODEL_PATH}", COLOR_ROJO_CLARO)
+            self.add_log(f"Error: Modelo no encontrado", COLOR_ROJO_CLARO)
             self.running = False
             return
             
         try:
             print(f"Cargando modelo IA desde {MODEL_PATH}...")
-            self.model = PPO.load(MODEL_PATH)
+            # Importamos RecurrentPPO aquí para asegurar que está disponible
+            from sb3_contrib import RecurrentPPO
+            self.model = RecurrentPPO.load(MODEL_PATH)
             print("Modelo cargado.")
+            
+            # Creamos el entorno base (sin bots, controlamos ambos lados)
             self.env = MusEnvironment(target_score=30)
             print("Entorno creado.")
+            
         except Exception as e:
             print(f"Error al cargar modelo o entorno: {e}")
             self.add_log(f"Error al cargar: {e}", COLOR_ROJO_CLARO)
@@ -348,17 +362,23 @@ class Game:
 
     def add_log(self, message, color):
         """ Añade un mensaje al log en pantalla """
-        print(f"LOG: {message}") # Mantenemos el log en terminal por si acaso
+        print(f"LOG: {message}") 
         self.message_log.append((message, color))
-        if len(self.message_log) > 20: # Limitar el historial
+        if len(self.message_log) > 20: 
             self.message_log.pop(0)
 
     def run(self):
         """ Bucle principal del juego """
         if not self.running:
-            return # Fallo al cargar
+            return 
             
+        # Reseteo inicial
         self.obs_vector, info = self.env.reset(seed=random.randint(0, 10000))
+        
+        # Reseteamos la memoria LSTM al iniciar la aplicación
+        self._last_lstm_states = None
+        self._last_episode_starts = np.ones((1,), dtype=bool)
+        
         self.state = self.get_state_from_env()
         self.last_lance = self.env.current_lance
 
@@ -377,24 +397,27 @@ class Game:
             
             elif self.state == GameState.REVEAL_HAND:
                 if action == "CONTINUE":
+                    # Avanzamos al estado real del juego (nueva mano)
                     self.state = self.get_state_from_env()
                     self.add_log("--- Nueva Mano ---", COLOR_LOG_SISTEMA)
+                    # NOTA: No reseteamos _last_lstm_states aquí porque es la misma partida
+                    # y la IA debe recordar el contexto general.
 
             elif self.state == GameState.GAME_OVER:
-                if action: # Cualquier acción (clic, espacio)
+                if action: 
                     self.running = False
             
             # 3. Dibujar (Renderizado)
             self.render()
             
             # 4. Controlar FPS
-            self.clock.tick(30) # 30 FPS
+            self.clock.tick(30) 
             
         pygame.quit()
         sys.exit()
 
     def handle_events(self):
-        """ Procesa inputs de Pygame (clics, salir, etc.) """
+        """ Procesa inputs de Pygame """
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
@@ -402,45 +425,45 @@ class Game:
                 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
-                    return "CONTINUE" # Para pantallas de "Revelar" o "Game Over"
+                    return "CONTINUE" 
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if self.state == GameState.GAME_OVER:
+                if self.state == GameState.GAME_OVER or self.state == GameState.REVEAL_HAND:
                     return "CONTINUE"
                     
                 if self.state == GameState.HUMAN_TURN:
                     mouse_pos = event.pos
                     for action, rect in self.renderer.button_rects.items():
                         if rect.collidepoint(mouse_pos):
-                            return action # Devuelve la MusAction
+                            return action 
         return None
 
     def execute_step(self, action: MusAction):
         """ 
-        Ejecuta un paso en el entorno y actualiza nuestro estado del juego.
-        Esta función es llamada tanto por el humano como por la IA.
+        Ejecuta un paso en el entorno y actualiza el estado.
         """
-        
-        # Guardar estado ANTES del paso
+        # Guardar estado ANTES del paso (para visualización)
         self.old_manos = (self.env.manos[0], self.env.manos[1])
         self.last_lance = self.env.current_lance
         old_scores = self.env.scores.copy()
         
-        # Identificar quién es
+        # Logging
         es_humano = (self.env.current_player_idx == 0)
         actor_name = "Humano" if es_humano else "IA"
         actor_color = COLOR_LOG_HUMANO if es_humano else COLOR_LOG_IA
-        
         self.add_log(f"{actor_name}: {action.name}", actor_color)
         
-        # --- Ejecutar el paso en el entorno ---
-        self.obs_vector, reward, terminated, truncated, info = self.env.step(action.value)
-        # -------------------------------------
-        
-        self.last_ia_action = action if not es_humano else None
+        if not es_humano:
+            self.last_ia_action = action
 
-        # --- Comprobar cambios de puntuación ---
-        # Esto es clave para informar al usuario de puntos "invisibles"
+        # --- PASO EN GYM ---
+        self.obs_vector, reward, terminated, truncated, info = self.env.step(action.value)
+        
+        # Actualizar flag de episodio para la LSTM
+        # Si termina, el siguiente paso será un "inicio de episodio" para la memoria
+        self._last_episode_starts[0] = terminated or truncated
+
+        # --- Logs de puntuación ---
         if self.env.scores[0] > old_scores[0]:
             diff = self.env.scores[0] - old_scores[0]
             self.add_log(f"Humano gana {diff} punto(s)", COLOR_LOG_SISTEMA)
@@ -448,66 +471,65 @@ class Game:
             diff = self.env.scores[1] - old_scores[1]
             self.add_log(f"IA gana {diff} punto(s)", COLOR_LOG_SISTEMA)
 
-        # --- Decidir el próximo estado ---
+        # --- Máquina de Estados ---
         if terminated or truncated:
             self.state = GameState.GAME_OVER
             self.add_log("¡¡¡PARTIDA TERMINADA!!!", COLOR_LOG_SISTEMA)
         
-        # -----------------------------------------------------------------
-        # --- INICIO DE LA CORRECCIÓN ---
-        #
-        # Si el lance actual es GRANDE, y el lance anterior
-        # fue uno de los últimos lances (CHICA, PARES, o JUEGO),
-        # significa que la mano ha terminado y hemos dado la vuelta.
+        # Detectar fin de mano: Si volvemos a GRANDE desde un lance avanzado
         elif self.env.current_lance == MusLance.GRANDE and self.last_lance in [MusLance.CHICA, MusLance.PARES, MusLance.JUEGO]:
             self.state = GameState.REVEAL_HAND
             self.add_log("Fin de la mano. Mostrando cartas...", COLOR_LOG_SISTEMA)
-        #
-        # --- FIN DE LA CORRECCIÓN ---
-        # -----------------------------------------------------------------
-        
+            
         else:
             self.state = self.get_state_from_env()
 
     def execute_ai_step(self):
-        """ Pide una acción a la IA y la ejecuta """
-        self.state = GameState.AI_STEP # Cambiar de "THINKING" a "STEP"
+        """ Pide acción a la IA gestionando su memoria LSTM """
+        self.state = GameState.AI_STEP 
         
-        # Usamos _get_observation del entorno base, que ya crea el vector
+        # 1. Obtener observación explícita de la IA (Jugador 1)
         obs_ia = self.env._get_observation(player_idx=1)
         
-        # Juega de forma no-determinista (¡más divertido!)
-        action_val, _ = self.model.predict(obs_ia, deterministic=False) 
+        # 2. Predecir usando MEMORIA
+        # Pasamos state (memoria anterior) y episode_start
+        action_val, lstm_states = self.model.predict(
+            obs_ia, 
+            state=self._last_lstm_states, 
+            episode_start=self._last_episode_starts,
+            deterministic=False 
+        )
+        
+        # 3. Actualizar la memoria para el futuro
+        self._last_lstm_states = lstm_states
+        
+        # 4. Convertir acción
         action_enum = MusAction(action_val.item())
         
-        # Validar que la IA no haga trampas (por si acaso)
+        # Validación anti-trampas
         legal_actions = self.env._get_legal_actions()
         if action_enum not in legal_actions:
-            self.add_log(f"IA intentó acción ilegal: {action_enum.name}", COLOR_ROJO_CLARO)
-            action_enum = random.choice(legal_actions) # Elegir una legal al azar
+            self.add_log(f"IA intentó ilegal: {action_enum.name}. Corrigiendo...", COLOR_ROJO_CLARO)
+            action_enum = random.choice(legal_actions)
             
         self.execute_step(action_enum)
 
     def get_state_from_env(self):
-        """ Decide el estado del juego basado en el turno del entorno """
+        """ Determina de quién es el turno """
         if self.env.current_player_idx == 0:
             return GameState.HUMAN_TURN
         else:
-            # Iniciar el temporizador para que la IA "piense"
-            self.ai_think_timer = pygame.time.get_ticks() + 1500 # 1.5 segundos
+            # Pausa dramática para que parezca que piensa
+            self.ai_think_timer = pygame.time.get_ticks() + 1000 
             return GameState.AI_THINKING
 
     def render(self):
-        """ Dibuja la pantalla apropiada según el estado """
-        
+        """ Delega el dibujo al renderer según el estado """
         if self.state == GameState.GAME_OVER:
             self.renderer.draw_game_over_screen(self)
-        
         elif self.state == GameState.REVEAL_HAND:
             self.renderer.draw_reveal_screen(self)
-        
         else:
-            # Estados de juego normales (Human, AI_Thinking, AI_Step)
             self.renderer.draw_game_state(self)
         
         pygame.display.flip()

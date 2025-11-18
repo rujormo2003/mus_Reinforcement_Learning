@@ -3,15 +3,15 @@ import gymnasium as gym
 import numpy as np
 import random
 
-# CORRECCIÓN: Importa desde el paquete local
 from .mus_env import MusEnvironment
 from .mus_enums import MusAction
-from .mus_bots import RandomAgent, BasicoAgent
+# CAMBIO: Importamos solo el nuevo bot heurístico
+from .mus_bots import HeuristicBot
 
 class MusEnvConBots(MusEnvironment):
     """
     Entorno wrapper. La IA (PPO/DQN) es SIEMPRE el Jugador 0.
-    El Jugador 1 es un bot (Básico o Aleatorio) controlado por este entorno.
+    El Jugador 1 es ahora SIEMPRE el HeuristicBot.
     
     Hereda de MusEnvironment para usar su lógica de `step` y `reset` base.
     """
@@ -19,23 +19,25 @@ class MusEnvConBots(MusEnvironment):
         # Llama al __init__ de MusEnvironment
         super().__init__(target_score)
         
-        # Creamos nuestra población de oponentes
-        self.bot_random = RandomAgent(1)
-        self.bot_basico = BasicoAgent(1)
-        self.oponente_actual = self.bot_basico # Por defecto
+        # --- CONFIGURACIÓN DEL OPONENTE ---
+        # Instanciamos el bot robusto. 
+        # - 15% de veces farolea.
+        # - 5% de veces comete errores (ruido para ayudar a tu IA a explorar).
+        self.bot_oponente = HeuristicBot(player_id=1, prob_farol=0.15, prob_error=0.05)
         
-        print("Entorno V2 (Gimnasio de Bots) creado.")
+        # Variable para mantener compatibilidad con la lógica de turno
+        self.oponente_actual = self.bot_oponente 
+        
+        print("Entorno V2 creado: Entrenando EXCLUSIVAMENTE contra HeuristicBot.")
 
-    # --- MÉTODO NUEVO: El "Traductor" ---
     def _get_obs_dict_for_bot(self, player_idx: int) -> dict:
         """
-        Crea el diccionario de observación que esperan los bots (BasicoAgent).
-        Lee el estado directamente del entorno base (self).
+        Crea el diccionario de observación que espera el HeuristicBot.
         """
         mano_bot = self.manos[player_idx]
         legal_actions_enums = self._get_legal_actions()
 
-        # 1. Información de la mano (lo que el bot puede ver)
+        # 1. Información de la mano
         hand_info = {
             "valores": mano_bot.get_valores_comparacion(),
             "pares": mano_bot.get_pares_info(),
@@ -65,77 +67,57 @@ class MusEnvConBots(MusEnvironment):
     # --- MÉTODO reset() SOBREESCRITO ---
     def reset(self, seed=None, options=None):
         """
-        Resetea el entorno y se asegura de que si el bot (J1)
-        es mano, juegue su turno antes de devolver el control.
+        Resetea el entorno y hace que el Bot juegue si es mano.
         """
-        # 1. Reseteo normal de la clase padre (MusEnvironment)
-        # Esto reparte cartas y elige aleatoriamente quién es mano (J0 o J1)
-        # Llama al reset de MusEnvironment, que devuelve (obs_vector, info)
+        # 1. Reseteo normal de la clase padre
         observation, info = super().reset(seed=seed, options=options)
         
-        # 2. Elegir un nuevo oponente para esta partida
-        if random.random() < 0.5:
-            self.oponente_actual = self.bot_random
-        else:
-            self.oponente_actual = self.bot_basico
+        # 2. Aseguramos que el oponente es el HeuristicBot (Ya no hay aleatoriedad aquí)
+        self.oponente_actual = self.bot_oponente
         
-        # 3. Bucle de Turno del Bot (si J1 es mano)
-        # Si el jugador actual es 1 (el Bot), debe jugar.
+        # 3. Bucle de Turno del Bot (si J1 es mano al empezar la partida)
         reward_J0 = 0.0
         
         while self.current_player_idx == 1 and not self.game_over:
-            # 3a. El Bot (J1) decide su acción
+            # 3a. El Bot decide
             obs_dict_bot = self._get_obs_dict_for_bot(1)
             action_enum_bot = self.oponente_actual.choose_action(obs_dict_bot)
             if action_enum_bot is None: break 
             
-            # 3b. Procesar la acción del Bot (J1)
-            # Llama al step de MusEnvironment
+            # 3b. Procesar acción
             observation, reward_J1, terminated, truncated, info = super().step(action_enum_bot.value)
             
-            # 3c. Acumular recompensa (Juego de suma cero)
+            # 3c. Acumular recompensa inversa para J0
             reward_J0 += (-reward_J1)
             
             if terminated or truncated:
                 break
         
-        # 4. Devolver la observación para la IA (J0) y la info
-        # 'observation' es el vector que generó el último super().step()
         return observation, info
 
     # --- MÉTODO step() SOBREESCRITO ---
     def step(self, action_value_IA: int):
         """
-        La IA (J0) toma un paso, y luego el Bot (J1) toma
-        todos los pasos que necesite hasta que sea el turno de la IA de nuevo.
+        La IA (J0) mueve, luego el Bot (J1) responde hasta que vuelve a tocarle a la IA.
         """
-        # 1. Procesar la acción de la IA (J0)
-        # Llama al step de MusEnvironment
+        # 1. Turno IA
         obs_J0_vec, reward_J0, done, trunc, info = super().step(action_value_IA)
 
-        # Si la partida terminó por la acción de la IA, devolvemos el control
         if done or trunc:
             return obs_J0_vec, reward_J0, done, trunc, info
 
-        # 2. Bucle: mientras sea el turno del Bot (J1) y la partida no acabe
+        # 2. Bucle Turno Bot
         while self.current_player_idx == 1 and not (done or trunc):
             
-            # 3. Crear la observación para el Bot
             obs_dict_bot = self._get_obs_dict_for_bot(1)
-            
-            # 4. El Bot (J1) decide su acción
             action_enum_bot = self.oponente_actual.choose_action(obs_dict_bot)
+            
             if action_enum_bot is None:
                 break 
             
-            # 5. Procesar la acción del Bot (J1)
-            # `reward_J1` es la recompensa del bot por esta acción
-            # `obs_J0_vec` es la observación para la IA si le tocase
             obs_J0_vec, reward_J1, done, trunc, info = super().step(action_enum_bot.value)
             
-            # 6. Acumular la recompensa de J0 (lógica de suma cero)
+            # Suma cero: lo que gana el bot lo pierde la IA
             reward_J0 += (-reward_J1)
 
-        # 7. El bucle ha terminado. Es el turno de la IA (J0) o la partida ha acabado.
-        # Devolvemos la última observación de J0, la recompensa ACUMULADA, y el estado.
         return obs_J0_vec, reward_J0, done, trunc, info
