@@ -23,7 +23,7 @@ class MusEnvConBots(MusEnvironment):
         # Instanciamos el bot robusto. 
         # - 15% de veces farolea.
         # - 5% de veces comete errores (ruido para ayudar a tu IA a explorar).
-        self.bot_oponente = HeuristicBot(player_id=1, prob_farol=0.15, prob_error=0.05)
+        self.bot_oponente = HeuristicBot(player_id=1, prob_farol=0.15, prob_error=0.05, prob_hero_call=0.10)
         
         # Variable para mantener compatibilidad con la lógica de turno
         self.oponente_actual = self.bot_oponente 

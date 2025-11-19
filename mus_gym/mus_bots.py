@@ -19,140 +19,124 @@ class RandomAgent:
             return None 
             
         return random.choice(legal_actions)
+# mus_gym/mus_bots.py (Actualizado)
+
+import random
+from .mus_enums import MusAction 
 
 class HeuristicBot:
     """
-    Agente heurístico robusto para entrenamiento.
-    - Evalúa la fuerza de la mano numéricamente.
-    - Tiene probabilidad de farolear (bluff).
-    - Tira órdagos con manos 'monstruo' o muy raramente de farol.
-    - Introduce ruido estocástico para no ser determinista.
+    Agente heurístico robusto con mayor riesgo de farol y capacidad de "Hero Call" 
+    para forzar al agente de RL a aprender cuándo retirarse o seguir apostando.
     """
-    def __init__(self, player_id=1, prob_farol=0.10, prob_error=0.05, agresividad=0.2):
+    def __init__(self, player_id=1, prob_farol=0.15, prob_error=0.05, prob_hero_call=0.10):
         self.player_id = player_id
-        self.prob_farol = prob_farol   # 10% de las veces miente con mano mala
-        self.prob_error = prob_error   # 5% de jugadas totalmente aleatorias (ruido)
-        self.agresividad = agresividad # Factor para decidir si envidar/querer en dudosas
-
+        self.prob_farol = prob_farol      # 15% de veces miente con mano mala (Envido)
+        self.prob_error = prob_error      # 5% de jugadas totalmente aleatorias (Ruido)
+        self.prob_hero_call = prob_hero_call # 10% de veces llama Órdagos con mano media
+        
     def choose_action(self, observation):
         legal_actions = observation["legal_actions_enums"]
-        if not legal_actions:
-            return None
-        if len(legal_actions) == 1:
-            return legal_actions[0]
+        if not legal_actions: return None
+        if len(legal_actions) == 1: return legal_actions[0]
 
-        # --- 1. Ruido Aleatorio (Epsilon-Greedy) ---
-        # Ayuda a que tu agente de RL explore estados raros
+        # 1. Ruido Aleatorio (Epsilon-Greedy)
         if random.random() < self.prob_error:
             return random.choice(legal_actions)
 
-        # --- 2. Análisis de la situación ---
         hand_info = observation["my_hand_info"]
         lance = observation["game_state"]["current_lance"]
         state = observation["game_state"]["lance_state"]
-        
-        # Calculamos la fuerza de la mano entre 0.0 (Pésima) y 1.0 (Invencible)
         fuerza = self._calcular_fuerza(lance, hand_info)
         
         # --- 3. Toma de Decisión ---
         
         if state == "START":
-            # Lógica para ABRIR apuestas (PASO / ENVIDO / ORDAGO)
-            
-            # Caso: Mano MUY fuerte (Órdago o Envido seguro)
+            # Si es muy fuerte, tirar Ordago o Envido
             if fuerza > 0.90:
-                if MusAction.ORDAGO in legal_actions and random.random() < 0.4:
+                if MusAction.ORDAGO in legal_actions and random.random() < 0.5:
                     return MusAction.ORDAGO
                 return MusAction.ENVIDO if MusAction.ENVIDO in legal_actions else MusAction.PASO
             
-            # Caso: Mano Decente (Envido por valor)
+            # Mano Decente
             if fuerza > 0.6:
                 return MusAction.ENVIDO if MusAction.ENVIDO in legal_actions else MusAction.PASO
             
-            # Caso: Mano Mala (Posible Farol)
+            # Mano Mala (Posible Farol)
             if fuerza < 0.4:
                 if random.random() < self.prob_farol and MusAction.ENVIDO in legal_actions:
-                    return MusAction.ENVIDO # ¡Farol!
+                    return MusAction.ENVIDO 
                 return MusAction.PASO
             
-            # Caso intermedio: Juega conservador pero a veces ataca
-            if random.random() < self.agresividad and MusAction.ENVIDO in legal_actions:
-                return MusAction.ENVIDO
+            # Caso intermedio
             return MusAction.PASO
 
         elif state == "BET_MADE":
+            
             # Lógica para RESPONDER apuestas (NO_QUIERO / QUIERO / ORDAGO)
             
             # Si nos tiran Órdago
-            if observation["game_state"]["bet"] >= 30: # Asumiendo bet alto es órdago
-                # Solo queremos con manos premium (o un farol suicida muy raro)
-                limit = 0.85
-                if lance == 'JUEGO': limit = 0.95 # En juego hay que ser estricto (31)
+            if observation["game_state"]["bet"] >= 30: 
                 
-                if fuerza >= limit:
+                # Nivel 1: Mano Invencible (Ej: 31, 4 Reyes, Duples máximos)
+                if fuerza >= 0.95:
                     return MusAction.QUIERO
+                
+                # Nivel 2: Mano Media/Fuerte (Fuerza 0.5 a 0.85) - HERO CALL
+                if 0.5 <= fuerza < 0.95:
+                    if random.random() < self.prob_hero_call:
+                        return MusAction.QUIERO # ¡Castigamos el posible farol!
+                
+                # Nivel 3: Mano Débil o Nivel 2 fallido
                 return MusAction.NO_QUIERO
 
             # Si es un Envido normal
-            # Si la mano es buena, queremos y a veces re-envidamos (si se pudiera) u Ordago
             if fuerza > 0.75:
                 # 10% de veces contrataca con Órdago si es legal
                 if MusAction.ORDAGO in legal_actions and random.random() < 0.1:
                     return MusAction.ORDAGO
                 return MusAction.QUIERO
             
-            # Si la mano es media/baja
+            # Mano Media/Baja
             if fuerza > 0.5:
-                return MusAction.QUIERO # Pagar para ver
+                return MusAction.QUIERO 
             
-            # Farol de contra-ataque (Bluff catch o re-bluff)
-            if random.random() < (self.prob_farol / 2) and MusAction.ORDAGO in legal_actions:
-                 return MusAction.ORDAGO
-
             return MusAction.NO_QUIERO
 
         return MusAction.PASO
 
     def _calcular_fuerza(self, lance, hand) -> float:
         """ Devuelve un valor 0.0 a 1.0 estimando la fuerza de la mano """
-        vals = hand["valores"] # Lista de 4 enteros
+        vals = hand["valores"]
         
         if lance == 'GRANDE':
-            # Sumar valor de cartas. Max posible 4 Reyes (10*4=40). Min Ases (4).
-            # Normalizamos: (Suma - 4) / 36
             suma = sum(vals)
             return (suma - 4) / 36.0
 
         elif lance == 'CHICA':
-            # Inverso a grande. Queremos valores bajos.
-            # Max fuerza = suma 4. Min fuerza = suma 40.
             suma = sum(vals)
             return 1.0 - ((suma - 4) / 36.0)
 
         elif lance == 'PARES':
-            # Jerarquía: Duples > Medias > Pares > Nada
             info = hand["pares"]
             if info["tipo"] == 'Ninguno': return 0.0
             
-            # Base score
             base = 0.0
             if info["tipo"] == 'Pares': base = 0.4
             elif info["tipo"] == 'Medias': base = 0.7
             elif info["tipo"] == 'Duples': base = 0.9
             
-            # Ajuste fino por el valor de las cartas (Duples de Reyes > Duples de Ases)
-            plus = info["valor_principal"] / 100.0 # Pequeño extra
+            plus = info["valor_principal"] / 100.0
             return min(1.0, base + plus)
 
         elif lance == 'JUEGO':
-            # Jerarquía estricta: 31 > 32 > 40 > 37 > 36 > 35 > 34 > 33
             pts = hand["juego"]
-            if pts == 0: return 0.0 # Tiene punto, no juego
+            if pts == 0: return 0.0
             
             ranking = [33, 34, 35, 36, 37, 40, 32, 31]
             if pts in ranking:
                 idx = ranking.index(pts)
-                return (idx + 1) / len(ranking) # 31 -> 1.0, 33 -> 0.125
+                return (idx + 1) / len(ranking)
             return 0.0
 
         return 0.0
