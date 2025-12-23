@@ -12,7 +12,7 @@ from mus_gym.mus_curriculum_env import MusEnvCurriculum
 # --- CONFIGURACIÓN GLOBAL ---
 MODELS_DIR = "models"
 LOGS_DIR = "logs"
-TIMESTEPS_PER_RUN = 500_000 # Reducido para testing, sube a 1M para producción
+TIMESTEPS_PER_RUN = 300_000 # Reducido para testing, sube a 1M para producción
 NUM_ENVS = 8 # Número de ambientes paralelos internos
 BASE_NAME = f"Curriculum_Run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 

@@ -59,7 +59,7 @@ except pygame.error:
     FONT_LOG = pygame.font.Font(None, 22)
 
 # Ruta del modelo
-MODEL_PATH = "models/ppo_lstm_mus_v3_vec_.zip" # <-- CAMBIA ESTO A LA RUTA DE TU MODELO
+MODEL_PATH = "models/selfplay_buffer_v2/champion_latest.zip" # <-- CAMBIA ESTO A LA RUTA DE TU MODELO
 ASSET_PATH = os.path.join("assets", "cartas")
 CARD_SIZE = (80, 120)
 
