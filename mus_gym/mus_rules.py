@@ -1,4 +1,3 @@
-# mus_gym/mus_rules.py
 from .mus_entities import Mano
 
 def _get_winner(idx_a: int, idx_b: int, is_winner_a: bool | None, mano_player_idx: int) -> int:
