@@ -243,6 +243,7 @@ import random
 # mus_gym/mus_env.py
 # mus_gym/mus_env.py
 # mus_gym/mus_env.py
+# mus_gym/mus_env.py
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
@@ -273,7 +274,7 @@ class MusEnvironment(gym.Env):
         
         # Estado apuestas
         self.lance_bet = 0
-        self.last_valid_bet = 0 # CORRECCIÓN: Para recordar la apuesta anterior al órdago
+        self.last_valid_bet = 0
         self.player_who_bet: int | None = None
         self.current_lance_state = LanceState.START 
         self.lances_list = list(MusLance)
@@ -306,7 +307,7 @@ class MusEnvironment(gym.Env):
         self.current_lance = lance
         self.current_player_idx = self.mano_player_idx
         self.lance_bet = 0
-        self.last_valid_bet = 0 # Resetear apuesta guardada
+        self.last_valid_bet = 0
         self.player_who_bet = None
         self.current_lance_state = LanceState.START
 
@@ -322,7 +323,7 @@ class MusEnvironment(gym.Env):
         if p0_has and p1_has:
             return False 
         elif p0_has:
-            self.scores[0] += 1
+            self.scores[0] += 1 # Cobro "el no"
         elif p1_has:
             self.scores[1] += 1
             
@@ -357,8 +358,31 @@ class MusEnvironment(gym.Env):
         
         for lance in self.lances_list:
             bet = self.pending_bets[lance]
-            if bet == -2: continue 
             
+            # --- CASO 1: Resuelto automáticamente (Uno tiene, otro no) ---
+            if bet == -2:
+                # El que tenía la jugada debe cobrar su valor (31->3ptos, Duples->3ptos...)
+                # El punto por "no tener" ya se sumó en _auto_resolve_lance.
+                ganador_idx = None
+                if lance == MusLance.PARES:
+                    if self.manos[0].tiene_pares(): ganador_idx = 0
+                    elif self.manos[1].tiene_pares(): ganador_idx = 1
+                elif lance == MusLance.JUEGO:
+                    if self.manos[0].tiene_juego(): ganador_idx = 0
+                    elif self.manos[1].tiene_juego(): ganador_idx = 1
+                
+                if ganador_idx is not None:
+                    mano_g = self.manos[ganador_idx]
+                    if lance == MusLance.PARES:
+                        self.scores[ganador_idx] += self._get_pares_points(mano_g)
+                    elif lance == MusLance.JUEGO:
+                        self.scores[ganador_idx] += self._get_juego_points(mano_g)
+                continue # Siguiente lance
+            
+            # --- CASO 2: Renuncia o No tenían (Ya pagado o nulo) ---
+            if bet == -1: continue
+
+            # --- CASO 3: Se jugó (Paso-Paso o Quiero) ---
             forced_winner = self.phase_winners[lance]
             if forced_winner is not None:
                 winner_idx = forced_winner
@@ -367,12 +391,15 @@ class MusEnvironment(gym.Env):
             
             mano_ganadora = self.manos[winner_idx]
             
+            # Puntos de apuesta
             if bet > 0:
                 self.scores[winner_idx] += bet
             elif bet == 0 and forced_winner is None: 
+                # Paso-Paso
                 if lance in [MusLance.GRANDE, MusLance.CHICA]:
                     self.scores[winner_idx] += 1
 
+            # Puntos de valor de la jugada
             if lance == MusLance.PARES:
                 self.scores[winner_idx] += self._get_pares_points(mano_ganadora)
             elif lance == MusLance.JUEGO:
@@ -413,7 +440,7 @@ class MusEnvironment(gym.Env):
         elif action == MusAction.ENVIDO:
             self.current_lance_state = LanceState.BET_MADE
             self.lance_bet = 2
-            self.last_valid_bet = 0 # No hay apuesta previa
+            self.last_valid_bet = 0
             self.player_who_bet = player
             self.current_player_idx = self._get_next_player()
         elif action == MusAction.ORDAGO:
@@ -424,7 +451,6 @@ class MusEnvironment(gym.Env):
             self.current_player_idx = self._get_next_player()
             
     def _handle_action_response(self, action: MusAction) -> dict:
-        # Devuelve info extra para logs
         responder = self.current_player_idx
         better = self.player_who_bet
         info_extra = {}
@@ -439,19 +465,10 @@ class MusEnvironment(gym.Env):
                 self._move_to_next_lance()
             
         elif action == MusAction.NO_QUIERO:
-            # CORRECCIÓN DE PUNTOS:
-            # Si me tiran órdago (lance_bet=30), gano lo que había antes (last_valid_bet).
-            # Si last_valid_bet es 0 (órdago directo), gano 1.
-            # Si me tiran envido (lance_bet=2), gano 1.
-            
             points_won = 1
             if self.lance_bet >= self.target_score:
                 points_won = self.last_valid_bet if self.last_valid_bet > 0 else 1
             else:
-                # Si rechazo envido(2) o vuelta(5+), se aplica lógica simplificada mus:
-                # Rechazar envido = 1. Rechazar reenvite = Apuesta anterior.
-                # Aquí simplificamos: Si rechazo, el otro gana lo anterior apostado o 1.
-                # Como last_valid_bet guarda el escalón anterior en reenvites...
                 points_won = self.last_valid_bet if self.last_valid_bet > 0 else 1
             
             self.scores[better] += points_won
@@ -465,12 +482,9 @@ class MusEnvironment(gym.Env):
             
         elif action == MusAction.ORDAGO:
             if self.lance_bet == self.target_score: 
-                # Responder órdago con órdago es QUIERO
                 self._handle_action_response(MusAction.QUIERO)
             else: 
-                # Guardamos la apuesta actual antes de subir a Órdago
                 self.last_valid_bet = self.lance_bet
-                
                 self.current_lance_state = LanceState.BET_MADE
                 self.lance_bet = self.target_score
                 self.player_who_bet = responder

@@ -1147,7 +1147,7 @@ class MusRenderer:
         
         self._draw_final_hands(game)
 
-        self.draw_text(f"PUNTUACIÓN ACTUAL: TU {game.env.scores[0]} - IA {game.env.scores[1]}", FONT_GRANDE, COLOR_BLANCO, ANCHO_TOTAL//2, 550, center=True)
+        self.draw_text(f"PUNTUACIÓN ACTUAL: TU {game.env.scores[0]} - IA {game.env.scores[1]}", FONT_GRANDE, COLOR_BLANCO, ANCHO_TOTAL//2, 620, center=True)
 
     def draw_game_over(self, game):
         # CAMBIO: Ahora usamos el mismo fondo verde y mostramos las cartas finales
