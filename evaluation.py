@@ -66,7 +66,7 @@ def run_evaluation():
                     deterministic=False
                 )
             else:
-                action, _ = model.predict(obs, deterministic=True)
+                action, _ = model.predict(obs, deterministic=False)
 
             obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated

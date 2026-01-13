@@ -1,4 +1,3 @@
-# mus_gym/mus_observation.py
 import numpy as np
 from .mus_enums import MusLance, LanceState
 from typing import TYPE_CHECKING
