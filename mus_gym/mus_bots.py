@@ -1,39 +1,16 @@
-# mus_gym/bots_mus.py
-import random
-# CORRECCIÓN: Importa desde el paquete local
-from .mus_enums import MusAction 
-
-
-class RandomAgent:
-    """
-    Este agente elige una acción aleatoria de entre las acciones legales.
-    Es el oponente más "tonto" posible.
-    """
-    def __init__(self, player_id=1):
-        self.player_id = player_id
-        
-    def choose_action(self, observation):
-        legal_actions = observation["legal_actions_enums"]
-        
-        if not legal_actions:
-            return None 
-            
-        return random.choice(legal_actions)
-# mus_gym/mus_bots.py (Actualizado)
-
 import random
 from .mus_enums import MusAction 
 
 class HeuristicBot:
     """
-    Agente heurístico robusto con mayor riesgo de farol y capacidad de "Hero Call" 
-    para forzar al agente de RL a aprender cuándo retirarse o seguir apostando.
+    Agente heurístico robusto.
+    MODIFICADO: Más agresivo en Grande y Chica.
     """
     def __init__(self, player_id=1, prob_farol=0.15, prob_error=0.05, prob_hero_call=0.10):
         self.player_id = player_id
-        self.prob_farol = prob_farol      # 15% de veces miente con mano mala (Envido)
-        self.prob_error = prob_error      # 5% de jugadas totalmente aleatorias (Ruido)
-        self.prob_hero_call = prob_hero_call # 10% de veces llama Órdagos con mano media
+        self.prob_farol = prob_farol      
+        self.prob_error = prob_error      
+        self.prob_hero_call = prob_hero_call 
         
     def choose_action(self, observation):
         legal_actions = observation["legal_actions_enums"]
@@ -52,23 +29,37 @@ class HeuristicBot:
         # --- 3. Toma de Decisión ---
         
         if state == "START":
-            # Si es muy fuerte, tirar Ordago o Envido
+            
+            # --- DEFINICIÓN DE UMBRALES ---
+            # Por defecto (Pares y Juego) exigimos fuerza 0.6
+            umbral_envite = 0.60
+            
+            # Para Grande y Chica bajamos la exigencia a 0.45
+            # Esto hará que envide con manos "normalitas"
+            if lance in ['GRANDE', 'CHICA']:
+                umbral_envite = 0.45
+
+            # ------------------------------
+
+            # Si es muy fuerte (Top 10%), tirar Ordago o Envido
             if fuerza > 0.90:
                 if MusAction.ORDAGO in legal_actions and random.random() < 0.5:
                     return MusAction.ORDAGO
                 return MusAction.ENVIDO if MusAction.ENVIDO in legal_actions else MusAction.PASO
             
-            # Mano Decente
-            if fuerza > 0.6:
+            # Mano Decente (Usamos el umbral dinámico)
+            if fuerza > umbral_envite:
                 return MusAction.ENVIDO if MusAction.ENVIDO in legal_actions else MusAction.PASO
             
             # Mano Mala (Posible Farol)
+            # Nota: Si el umbral_envite es bajo (0.45), el espacio para 'PASO' se reduce,
+            # haciendo el bot mucho más activo.
             if fuerza < 0.4:
                 if random.random() < self.prob_farol and MusAction.ENVIDO in legal_actions:
                     return MusAction.ENVIDO 
                 return MusAction.PASO
             
-            # Caso intermedio
+            # Caso intermedio (Mano ni fu ni fa -> PASO)
             return MusAction.PASO
 
         elif state == "BET_MADE":
@@ -78,27 +69,29 @@ class HeuristicBot:
             # Si nos tiran Órdago
             if observation["game_state"]["bet"] >= 30: 
                 
-                # Nivel 1: Mano Invencible (Ej: 31, 4 Reyes, Duples máximos)
+                # Nivel 1: Mano Invencible
                 if fuerza >= 0.95:
                     return MusAction.QUIERO
                 
-                # Nivel 2: Mano Media/Fuerte (Fuerza 0.5 a 0.85) - HERO CALL
+                # Nivel 2: Hero Call
                 if 0.5 <= fuerza < 0.95:
                     if random.random() < self.prob_hero_call:
-                        return MusAction.QUIERO # ¡Castigamos el posible farol!
+                        return MusAction.QUIERO 
                 
-                # Nivel 3: Mano Débil o Nivel 2 fallido
                 return MusAction.NO_QUIERO
 
             # Si es un Envido normal
             if fuerza > 0.75:
-                # 10% de veces contrataca con Órdago si es legal
                 if MusAction.ORDAGO in legal_actions and random.random() < 0.1:
                     return MusAction.ORDAGO
                 return MusAction.QUIERO
             
-            # Mano Media/Baja
-            if fuerza > 0.5:
+            # Bajamos un poco también la exigencia para QUERER envites en Grande/Chica
+            umbral_quiero = 0.5
+            if lance in ['GRANDE', 'CHICA']:
+                umbral_quiero = 0.45
+
+            if fuerza > umbral_quiero:
                 return MusAction.QUIERO 
             
             return MusAction.NO_QUIERO
@@ -111,6 +104,7 @@ class HeuristicBot:
         
         if lance == 'GRANDE':
             suma = sum(vals)
+            # Ajuste matemático: Max 40, Min 4. Rango 36.
             return (suma - 4) / 36.0
 
         elif lance == 'CHICA':
