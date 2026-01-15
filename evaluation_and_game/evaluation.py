@@ -7,51 +7,36 @@ import seaborn as sns
 from sb3_contrib import RecurrentPPO
 from stable_baselines3 import PPO
 
-# --- 1. CONFIGURACIÓN DE RUTAS ROBUSTA ---
-# Esto asegura que funcione sin importar desde qué carpeta ejecutes la terminal
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))  # Carpeta: evaluation_and_game
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)             # Carpeta: Raíz del proyecto
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) 
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)             
 
-# Añadimos la raíz al path para poder importar mus_gym
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
-# --- BLOQUE DE IMPORTACIÓN DE ENTORNO ---
 try:
     from mus_gym.mus_env_v2 import MusEnvConBots
-    print("✅ Entorno cargado correctamente desde la raíz.")
+    print("Entorno cargado correctamente desde la raíz.")
 except ImportError as e:
-    print(f"❌ Error de importación: {e}")
+    print(f"Error de importación: {e}")
     print(f"Buscando en: {PROJECT_ROOT}")
     sys.exit(1)
 
 def run_evaluation():
-    # --- CONFIGURACIÓN ---
     N_EPISODES = 100 
     TARGET_SCORE = 30 
     
-    # --- SELECCIÓN DEL MODELO (Basado en tu imagen) ---
-    # Aquí construimos la ruta exacta usando la raíz del proyecto.
-    # He puesto uno de los que se ven en la foto: 'models/sheriff_colab/Mus_League_...'
-    
     MODEL_REL_PATH = os.path.join("models", "ppo_LinearDecay.zip")
     MODEL_PATH = os.path.join(PROJECT_ROOT, MODEL_REL_PATH)
-    
-    # Si quieres probar otro, comenta la línea de arriba y descomenta/edita esta:
-    # MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "selfplay_buffer_v2", "champion_latest.zip")
 
-    # --- NOMBRES DE ARCHIVO DE SALIDA ---
     model_name = os.path.splitext(os.path.basename(MODEL_PATH))[0]
     
-    # Guardamos los resultados en la misma carpeta donde está este script (evaluation_and_game)
     plot_boxplot_name = os.path.join(SCRIPT_DIR, f"{model_name}_boxplot.png")
     plot_barras_name = os.path.join(SCRIPT_DIR, f"{model_name}_barras.png")
 
-    # 1. Cargar Entorno
     env = MusEnvConBots(target_score=TARGET_SCORE)
     
     if not os.path.exists(MODEL_PATH):
-        print(f"\n❌ Error: No se encuentra el archivo del modelo.")
+        print(f"\n Error: No se encuentra el archivo del modelo.")
         print(f"Buscando en: {MODEL_PATH}")
         print("Verifica que el nombre del archivo .zip en el código coincida con el de la carpeta.")
         return
@@ -76,7 +61,6 @@ def run_evaluation():
     total_score_bot = 0
     total_steps_all_games = 0
 
-    # 2. Bucle de juego
     for i in range(N_EPISODES):
         obs, _ = env.reset()
         done = False
@@ -127,7 +111,6 @@ def run_evaluation():
         if (i + 1) % 10 == 0:
             print(f"Partida {i+1}/{N_EPISODES} -> {res_str} ({score_ia}-{score_bot}) | Pasos: {current_episode_steps}")
 
-    # 3. Estadísticas
     win_rate = (wins_ia / N_EPISODES) * 100
     avg_steps = total_steps_all_games / N_EPISODES
 
@@ -139,20 +122,17 @@ def run_evaluation():
     print(f"DURACIÓN MEDIA: {avg_steps:.2f} pasos")
     print("="*50)
 
-    # 4. Gráficos
     print("\nGenerando gráficos...")
     df = pd.DataFrame(history)
     sns.set_theme(style="whitegrid")
     
-    # Gráfico 1
     plt.figure(figsize=(10, 6))
     sns.boxplot(x='Resultado', y='Duracion_Pasos', data=df, palette={'VICTORIA': 'green', 'DERROTA': 'red'})
     plt.title(f'Modelo: {model_name}\nDuración vs Resultado')
     plt.savefig(plot_boxplot_name)
     print(f"Gráfico guardado: {plot_boxplot_name}")
-    plt.close() # Importante cerrar para liberar memoria
-    
-    # Gráfico 2
+    plt.close() 
+
     try:
         df['Rango_Duracion'] = pd.cut(df['Duracion_Pasos'], bins=5) 
         win_rate_by_len = df.groupby('Rango_Duracion', observed=False)['Ganador_Binario'].mean() * 100
@@ -169,7 +149,6 @@ def run_evaluation():
     except Exception as e:
         print(f"No se pudo generar el gráfico de barras: {e}")
 
-    # plt.show() # Descomentar si tienes entorno visual
 
 if __name__ == "__main__":
     run_evaluation()

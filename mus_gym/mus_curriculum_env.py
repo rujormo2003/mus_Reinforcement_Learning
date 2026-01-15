@@ -1,10 +1,8 @@
-# mus_gym/mus_curriculum_env.py
 import gymnasium as gym
 import numpy as np
 import random
 from sb3_contrib import RecurrentPPO 
 
-# Importaciones del paquete local
 from .mus_env import MusEnvironment
 from .mus_enums import MusAction
 from typing import TYPE_CHECKING
@@ -20,7 +18,6 @@ class MusEnvCurriculum(MusEnvironment):
         super().__init__(target_score)
         
         if opponent_policy is None:
-            # Forzamos un error si no se pasa el profesor, ya que no hay fallback
             raise ValueError(
                 "MusEnvCurriculum requiere que se pase un objeto 'opponent_policy' (modelo RL congelado) "
                 "para operar. No se usa el HeuristicBot."
@@ -30,9 +27,7 @@ class MusEnvCurriculum(MusEnvironment):
         self.is_rl_opponent = True
         print("Entorno Curriculum: Entrenando contra Modelo RL Congelado (Profesor).")
 
-    # --- FUNCIÓN CENTRAL: Oponente elige acción ---
     def _oponente_choose_action(self, player_idx: int) -> MusAction:
-        # El código se simplifica al no necesitar el 'if self.is_rl_opponent:'
         obs_vector = self._get_observation(player_idx)
         action_val, _ = self.oponente_actual.predict(
             obs_vector, 
@@ -40,7 +35,6 @@ class MusEnvCurriculum(MusEnvironment):
         )
         return MusAction(action_val.item())
 
-    # --- MODIFICACIÓN DE FLUJO: reset() y step() (Usan la nueva función de acción) ---
     def reset(self, seed=None, options=None):
         observation, info = super().reset(seed=seed, options=options)
         reward_J0 = 0.0

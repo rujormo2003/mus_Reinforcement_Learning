@@ -1,73 +1,96 @@
-# train_self_play.py
 import os
+import numpy as np
 from datetime import datetime
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+from stable_baselines3.common.evaluation import evaluate_policy
 from sb3_contrib import RecurrentPPO
-import mus_gym  # Import necesario para registrar los envs
+import mus_gym  
 
-# --- CONFIGURACIÓN ---
-MODELO_ANTERIOR = "models/ppo_lstm_mus_v3_vec_.zip" # Ruta de tu modelo entrenado previamente
-CARPETA_SELFPLAY = "models/selfplay_buffer"
+MODELO_ANTERIOR = "models/ppo_lstm_mus_v3_vec_.zip" 
+CARPETA_SELFPLAY = "models/selfplay_buffer_v2"
 LOGS_DIR = "logs"
-TIMESTEPS_TOTAL = 2_000_000  # Entrenar por largo tiempo
-UPDATE_FREQ = 50_000         # Actualizar rival cada 50k pasos
-NUM_ENVS = 2                 # Entornos paralelos
+TIMESTEPS_TOTAL = 2_000_000  
+UPDATE_FREQ = 50_000          
+EVAL_EPISODES = 100           
+WIN_THRESHOLD = 0.55          
+NUM_ENVS = 4                  
 
 os.makedirs(CARPETA_SELFPLAY, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
 
-class SelfPlayCallback(BaseCallback):
+class ChampionLeagueCallback(BaseCallback):
     """
-    Callback personalizado para:
-    1. Guardar el modelo actual cada X pasos.
-    2. Actualizar el entorno para que use ese modelo como oponente.
+    Callback tipo 'Rey de la Colina'.
+    Cada X pasos, pausa el entrenamiento y enfrenta al modelo actual (Aspirante)
+    contra el modelo guardado en disco (Campeón).
+    
+    Si Aspirante gana > WIN_THRESHOLD, se convierte en el nuevo Campeón.
     """
-    def __init__(self, update_freq, save_dir, verbose=1):
+    def __init__(self, update_freq, save_dir, eval_episodes=100, win_threshold=0.55, verbose=1):
         super().__init__(verbose)
         self.update_freq = update_freq
         self.save_dir = save_dir
+        self.eval_episodes = eval_episodes
+        self.win_threshold = win_threshold
         self.last_update_step = 0
+        
+        self.champion_path = os.path.join(self.save_dir, "champion_latest.zip")
+        self.candidate_path = os.path.join(self.save_dir, "candidate_temp.zip")
+
+        self.eval_env = make_vec_env(
+            "Mus-v3", 
+            n_envs=1, 
+            vec_env_cls=DummyVecEnv,
+            env_kwargs={"opponent_path": self.champion_path}
+        )
 
     def _on_step(self) -> bool:
-        # num_timesteps se actualiza con cada paso en cada ambiente
         if self.num_timesteps - self.last_update_step >= self.update_freq:
             self.last_update_step = self.num_timesteps
             
-            # 1. Definir ruta para el nuevo "champion"
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            new_opponent_path = os.path.join(self.save_dir, f"opponent_{self.num_timesteps}_{timestamp}.zip")
-            latest_opponent_path = os.path.join(self.save_dir, "opponent_latest.zip")
-            
-            # 2. Guardar el modelo actual (el que está aprendiendo)
-            self.model.save(new_opponent_path)
-            self.model.save(latest_opponent_path) # Sobreescribir el latest para facilitar carga
-            
             if self.verbose > 0:
-                print(f"\n[Self-Play] ¡Nuevo campeón generado en paso {self.num_timesteps}!")
-                print(f"[Self-Play] Actualizando oponentes en los entornos...")
+                print(f"\n[League] Paso {self.num_timesteps}: ¡EL ASPIRANTE RETA AL CAMPEÓN!")
 
-            # 3. Notificar a los entornos que carguen el nuevo modelo
-            # Usamos env_method para llamar a la función dentro de cada subproceso
-            self.training_env.env_method("update_opponent_model", latest_opponent_path)
+            self.model.save(self.candidate_path)
+            
+            mean_reward, std_reward = evaluate_policy(
+                self.model, 
+                self.eval_env, 
+                n_eval_episodes=self.eval_episodes,
+                deterministic=True 
+            )
+        
+            
+            print(f"[League] Resultado del duelo: Recompensa Media = {mean_reward:.3f} (std={std_reward:.3f})")
+            
+            is_new_champion = mean_reward > 0.05
+            if is_new_champion:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                archive_path = os.path.join(self.save_dir, f"champion_{self.num_timesteps}_{timestamp}.zip")
+                
+                self.model.save(self.champion_path)
+                self.model.save(archive_path)      
+                
+                print(f"[League] NUEVO CAMPEÓN! El modelo actual ha derrotado al anterior.")
+                
+                self.training_env.env_method("update_opponent_model", self.champion_path)
+                self.eval_env.env_method("update_opponent_model", self.champion_path)
+                
+            else:
+                print(f"[League] El aspirante ha fallado. Se mantiene el Campeón actual.")
             
         return True
 
 def main():
-    print(f"--- Iniciando Entrenamiento Self-Play (Mus-v3) ---")
-    print(f"Cargando modelo base: {MODELO_ANTERIOR}")
-
-    # 1. Preparar el modelo inicial del oponente
-    # Copiamos el modelo base a la carpeta buffer para que sea el primer rival
-    initial_opponent_path = os.path.join(CARPETA_SELFPLAY, "opponent_initial.zip")
+    print(f"--- Iniciando Entrenamiento League Self-Play (Mus-v3) ---")
+    
+    initial_champion_path = os.path.join(CARPETA_SELFPLAY, "champion_latest.zip")
     base_model = RecurrentPPO.load(MODELO_ANTERIOR)
-    base_model.save(initial_opponent_path)
-    del base_model # Liberar memoria
-
-    # 2. Crear entorno vectorizado Mus-v3
-    # Nota: Pasamos 'opponent_path' en lugar de 'opponent_policy' objeto
-    env_kwargs = {"opponent_path": initial_opponent_path}
+    base_model.save(initial_champion_path)
+    del base_model 
+    env_kwargs = {"opponent_path": initial_champion_path}
     
     env = make_vec_env(
         "Mus-v3", 
@@ -76,33 +99,29 @@ def main():
         env_kwargs=env_kwargs
     )
 
-    # 3. Cargar el Agente (Learner) desde el modelo previo
-    # Importante: pasamos el 'env' nuevo para que se vincule correctamente
     learner = RecurrentPPO.load(
         MODELO_ANTERIOR, 
         env=env,
         tensorboard_log=LOGS_DIR,
         device="auto",
-        # Puedes ajustar learning rate aquí si quieres hacer fine-tuning más suave
         learning_rate=0.0002 
     )
 
-    # 4. Configurar Callback
-    self_play_callback = SelfPlayCallback(
+    league_callback = ChampionLeagueCallback(
         update_freq=UPDATE_FREQ,
-        save_dir=CARPETA_SELFPLAY
+        save_dir=CARPETA_SELFPLAY,
+        eval_episodes=EVAL_EPISODES,
+        win_threshold=WIN_THRESHOLD
     )
 
-    # 5. Entrenar
-    run_name = f"Mus_SelfPlay_{datetime.now().strftime('%Y%m%d_%H%M')}"
+    run_name = f"Mus_League_{datetime.now().strftime('%Y%m%d_%H%M')}"
     learner.learn(
         total_timesteps=TIMESTEPS_TOTAL, 
-        callback=self_play_callback,
+        callback=league_callback,
         tb_log_name=run_name,
-        reset_num_timesteps=False # Mantiene el conteo histórico del modelo si existía
+        reset_num_timesteps=False 
     )
 
-    # 6. Guardar modelo final
     learner.save(f"models/{run_name}_FINAL")
     env.close()
     print("Entrenamiento finalizado.")

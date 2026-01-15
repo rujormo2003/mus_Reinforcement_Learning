@@ -7,33 +7,28 @@ from stable_baselines3 import PPO
 from sb3_contrib import RecurrentPPO
 import random
 import numpy as np
-import copy # Importado arriba para limpieza
+import copy 
 
-# --- 1. CONFIGURACIÓN DE RUTAS ROBUSTA (Para subcarpetas) ---
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))  # Carpeta: evaluation_and_game
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)             # Carpeta: Raíz del proyecto
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))  
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)           
 
-# Añadimos la raíz al path para poder importar mus_gym
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
-# --- IMPORTACIONES ---
 try:
     from mus_gym.mus_env import MusEnvironment
     from mus_gym.mus_enums import MusAction, MusLance, LanceState
     from mus_gym.mus_entities import Carta, Mano
     from mus_gym.mus_config import PALOS, RANGOS_REALES
-    print("✅ Paquete 'mus_gym' cargado correctamente.")
+    print("Paquete 'mus_gym' cargado correctamente.")
 except ImportError as e:
-    print(f"❌ Error crítico: No se encuentra el paquete 'mus_gym'. {e}")
+    print(f"Error: No se encuentra el paquete 'mus_gym'. {e}")
     print(f"Ruta buscada: {PROJECT_ROOT}")
     sys.exit(1)
 
-# --- CONFIGURACIÓN GLOBAL ---
 pygame.init()
 pygame.font.init()
 
-# Colores
 COLOR_VERDE_FONDO = (0, 100, 25)
 COLOR_PANEL_FONDO = (30, 60, 30)
 COLOR_BLANCO = (255, 255, 255)
@@ -54,7 +49,6 @@ ANCHO_PANEL = 350
 ANCHO_TOTAL = ANCHO_JUEGO + ANCHO_PANEL
 ALTO_TOTAL = ALTO_JUEGO
 
-# Fuentes
 FONT_GRANDE = pygame.font.SysFont('Arial', 32, bold=True)
 FONT_MEDIANA = pygame.font.SysFont('Arial', 24)
 FONT_PEQUENA = pygame.font.SysFont('Arial', 18)
@@ -117,7 +111,6 @@ class MusRenderer:
                 if key in self.card_images:
                     self.pantalla.blit(self.card_images[key], (x, y))
                 else:
-                    # Fallback si no hay imagen
                     pygame.draw.rect(self.pantalla, COLOR_BLANCO, (x, y, CARD_SIZE[0], CARD_SIZE[1]))
                     pygame.draw.rect(self.pantalla, COLOR_NEGRO, (x, y, CARD_SIZE[0], CARD_SIZE[1]), 2)
                     self.draw_text(f"{carta_obj.rango}", FONT_PEQUENA, COLOR_NEGRO, x+5, y+5)
@@ -135,11 +128,9 @@ class MusRenderer:
         self.pantalla.fill(COLOR_PANEL_FONDO, (ANCHO_JUEGO, 0, ANCHO_PANEL, ALTO_TOTAL))
         pygame.draw.line(self.pantalla, COLOR_BLANCO, (ANCHO_JUEGO, 0), (ANCHO_JUEGO, ALTO_TOTAL), 2)
 
-        # Cartas IA (Ocultas)
         for i in range(4):
             self.draw_card(None, 250 + i * 110, 30, face_down=True)
         
-        # Cartas Jugador
         mano = game.env.manos[0]
         if mano:
             for i, c in enumerate(mano.cartas):
@@ -268,14 +259,12 @@ class Game:
     def init_env(self):
         self.env = MusEnvironment(target_score=30)
         
-        # Verificar modelo
         if os.path.exists(MODEL_PATH):
             print(f"Cargando modelo de: {MODEL_PATH}")
             try:
                 self.model = RecurrentPPO.load(MODEL_PATH)
                 self.log("Modelo IA (RecurrentPPO) cargado.", COLOR_LOG_SISTEMA)
             except Exception:
-                # Intento fallback a PPO normal
                 try:
                     self.model = PPO.load(MODEL_PATH)
                     self.log("Modelo IA (PPO) cargado.", COLOR_LOG_SISTEMA)
@@ -344,7 +333,6 @@ class Game:
         scores_pre = self.env.scores.copy()
         lance_pre = self.env.current_lance
         
-        # Snapshot
         self.last_hands_snapshot = (copy.deepcopy(self.env.manos[0]), copy.deepcopy(self.env.manos[1]))
 
         actor = "TU" if self.env.current_player_idx == 0 else "IA"
@@ -354,7 +342,6 @@ class Game:
         obs, reward, term, trunc, info = self.env.step(action.value)
         self.episode_starts[0] = term or trunc
 
-        # --- LOGS ---
         renuncia_winner = info.get("renuncia_winner")
         renuncia_pts = info.get("renuncia_points", 0)
         

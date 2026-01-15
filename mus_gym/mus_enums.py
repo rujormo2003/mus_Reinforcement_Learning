@@ -1,4 +1,3 @@
-# mus_gym/mus_enums.py
 from enum import Enum
 
 class MusAction(Enum):

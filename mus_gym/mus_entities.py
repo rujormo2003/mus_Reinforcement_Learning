@@ -1,4 +1,3 @@
-# mus_gym/mus_entities.py
 from __future__ import annotations
 import random
 from collections import Counter
