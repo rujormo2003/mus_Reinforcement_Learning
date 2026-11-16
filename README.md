@@ -14,7 +14,7 @@ Reinforcement Learning. El proyecto incluye:
 
 ## ▶️ Jugar
 
-**Online:** `https://<tu-usuario>.github.io/<nombre-del-repo>/` (GitHub Pages, ver [Publicar la demo](#publicar-la-demo)).
+**Online:** <https://rujormo2003.github.io/mus_Reinforcement_Learning/> (GitHub Pages, ver [Publicar la demo](#publicar-la-demo)).
 
 **En local, en el navegador:**
 
@@ -149,9 +149,11 @@ y añádelo a la lista `MODELS` de [`web/js/app.js`](web/js/app.js).
 
 ### Publicar la demo
 
-1. Sube el repositorio a GitHub.
+1. El repositorio debe ser **público**: en el plan gratuito de GitHub, Pages no está disponible para
+   repos privados (mientras sea privado, el workflow se salta sin fallar).
 2. En **Settings → Pages**, elige **Source: GitHub Actions**.
-3. Cada push a `main` que toque `web/` la publica con [`.github/workflows/pages.yml`](.github/workflows/pages.yml).
+3. Cada push a `main` que toque `web/` la publica con [`.github/workflows/pages.yml`](.github/workflows/pages.yml)
+   (también se puede lanzar a mano desde la pestaña *Actions*).
 
 ## 📂 Estructura
 
@@ -182,7 +184,12 @@ y añádelo a la lista `MODELS` de [`web/js/app.js`](web/js/app.js).
 python -m pytest
 ```
 
+## Licencia
+
+El código está bajo licencia [MIT](LICENSE). Las imágenes de las cartas tienen su propia licencia
+(CC BY-SA 3.0), indicada abajo.
+
 ## Créditos
 
-- Imágenes de las cartas: baraja española libre de Wikimedia Commons. <!-- TODO: enlazar el archivo original y su licencia -->
+- Imágenes de las cartas: [«Baraja española completa»](https://commons.wikimedia.org/wiki/File:Baraja_espa%C3%B1ola_completa.png) de Basquetteur, basada en [«Baraja española.svg»](https://commons.wikimedia.org/wiki/File:Baraja_espa%C3%B1ola.svg) de Germarquezm, bajo licencia [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/deed.es). Recortadas y, para la web, redimensionadas a WebP. Detalles en [assets/cartas/CREDITS.md](assets/cartas/CREDITS.md).
 - Construido con Gymnasium, Stable-Baselines3 y sb3-contrib.

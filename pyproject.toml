@@ -7,6 +7,7 @@ name = "mus-gym"
 version = "1.0.0"
 description = "El juego de cartas Mus (1 vs 1) como entorno de Gymnasium, con agentes RecurrentPPO entrenados."
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = ["gymnasium>=1.0", "numpy>=1.24"]
 
