@@ -1,69 +1,79 @@
+"""
+Reglas para decidir el ganador de cada lance y los puntos de pares/juego.
+
+Todas las funciones `compare_*` devuelven el índice del jugador ganador (0 o 1).
+En caso de empate gana el jugador que es "mano".
+"""
+from __future__ import annotations
+
 from .mus_entities import Mano
 
-def _get_winner(idx_a: int, idx_b: int, is_winner_a: bool | None, mano_player_idx: int) -> int:
-    """ Determina el ganador. Si hay empate (is_winner_a is None), gana la mano. """
-    if is_winner_a is None: 
+RANKING_PARES = {"Ninguno": 0, "Pares": 1, "Medias": 2, "Duples": 3}
+
+
+def _winner(is_winner_0: bool | None, mano_player_idx: int) -> int:
+    if is_winner_0 is None:
         return mano_player_idx
-    return idx_a if is_winner_a else idx_b
+    return 0 if is_winner_0 else 1
+
+
+def _cmp(a, b) -> bool | None:
+    """True si a > b, False si a < b, None si empatan."""
+    if a == b:
+        return None
+    return a > b
+
 
 def compare_grande(mano0: Mano, mano1: Mano, mano_player_idx: int) -> int:
-    vals0 = mano0.get_valores_comparacion()
-    vals1 = mano1.get_valores_comparacion()
-    is_winner_0 = None
-    
-    for i in range(4):
-        if vals0[i] > vals1[i]:
-            is_winner_0 = True
-            break
-        if vals0[i] < vals1[i]:
-            is_winner_0 = False
-            break
-    return _get_winner(0, 1, is_winner_0, mano_player_idx)
+    """Gana la carta más alta; si empatan se compara la siguiente."""
+    return _winner(
+        _cmp(mano0.get_valores_comparacion(), mano1.get_valores_comparacion()),
+        mano_player_idx,
+    )
+
 
 def compare_chica(mano0: Mano, mano1: Mano, mano_player_idx: int) -> int:
-    vals0 = mano0.get_valores_comparacion()
-    vals1 = mano1.get_valores_comparacion()
-    is_winner_0 = None
-    
-    for i in range(3, -1, -1):
-        if vals0[i] < vals1[i]:
-            is_winner_0 = True
-            break
-        if vals0[i] > vals1[i]:
-            is_winner_0 = False
-            break
-    return _get_winner(0, 1, is_winner_0, mano_player_idx)
+    """Gana la carta más baja; si empatan se compara la siguiente más baja."""
+    low0 = list(reversed(mano0.get_valores_comparacion()))
+    low1 = list(reversed(mano1.get_valores_comparacion()))
+    res = _cmp(low0, low1)
+    return _winner(None if res is None else not res, mano_player_idx)
+
 
 def compare_pares(mano0: Mano, mano1: Mano, mano_player_idx: int) -> int:
-    info0, info1 = mano0.get_pares_info(), mano1.get_pares_info()
-    rank = {'Ninguno': 0, 'Pares': 1, 'Medias': 2, 'Duples': 3}
-    r0, r1 = rank[info0['tipo']], rank[info1['tipo']]
-    is_winner_0 = None
-    
-    if r0 > r1: is_winner_0 = True
-    elif r0 < r1: is_winner_0 = False
-    else:
-        if info0['valor_principal'] > info1['valor_principal']: is_winner_0 = True
-        elif info0['valor_principal'] < info1['valor_principal']: is_winner_0 = False
-        elif info0['tipo'] == 'Duples' and is_winner_0 is None:
-            val_sec0, val_sec1 = info0.get('valor_secundario', 0), info1.get('valor_secundario', 0)
-            if val_sec0 > val_sec1: is_winner_0 = True
-            elif val_sec0 < val_sec1: is_winner_0 = False
-    return _get_winner(0, 1, is_winner_0, mano_player_idx)
+    """Duples > Medias > Pares; a igual tipo, gana la figura más alta."""
+    i0, i1 = mano0.get_pares_info(), mano1.get_pares_info()
+    key0 = (RANKING_PARES[i0["tipo"]], i0["valor_principal"], i0["valor_secundario"])
+    key1 = (RANKING_PARES[i1["tipo"]], i1["valor_principal"], i1["valor_secundario"])
+    return _winner(_cmp(key0, key1), mano_player_idx)
+
+
+def _valor_juego_ordenable(puntos: int) -> int:
+    """31 es el mejor juego, luego 32, y después 40, 37, 36, 35, 34, 33."""
+    return {31: 100, 32: 99}.get(puntos, puntos)
+
 
 def compare_juego(mano0: Mano, mano1: Mano, mano_player_idx: int) -> int:
-    j0, j1 = mano0.get_juego_valor(), mano1.get_juego_valor()
+    """Quien tiene juego gana a quien no; entre juegos, 31 > 32 > 40 > 37 > ... > 33.
+
+    Sin juego en ninguno de los dos se compara el "punto" (suma más alta).
+    """
     tj0, tj1 = mano0.tiene_juego(), mano1.tiene_juego()
-    is_winner_0 = None
-    
-    if tj0 and not tj1: is_winner_0 = True
-    elif not tj0 and tj1: is_winner_0 = False
-    elif tj0 and tj1:
-        val0 = 100 if j0 == 31 else (99 if j0 == 32 else j0)
-        val1 = 100 if j1 == 31 else (99 if j1 == 32 else j1)
-        if val0 > val1: is_winner_0 = True
-        if val0 < val1: is_winner_0 = False
-    elif not tj0 and not tj1:
-        if j0 > j1: is_winner_0 = True
-        if j0 < j1: is_winner_0 = False
-    return _get_winner(0, 1, is_winner_0, mano_player_idx)
+    if tj0 != tj1:
+        return _winner(tj0, mano_player_idx)
+    j0, j1 = mano0.get_juego_valor(), mano1.get_juego_valor()
+    if tj0:
+        j0, j1 = _valor_juego_ordenable(j0), _valor_juego_ordenable(j1)
+    return _winner(_cmp(j0, j1), mano_player_idx)
+
+
+def pares_points(mano: Mano) -> int:
+    """Puntos que cobra en el recuento una mano con pares (1 / 2 / 3)."""
+    return {"Pares": 1, "Medias": 2, "Duples": 3}.get(mano.get_pares_info()["tipo"], 0)
+
+
+def juego_points(mano: Mano) -> int:
+    """Puntos que cobra en el recuento: 3 por la 31, 2 por otro juego, 1 por punto."""
+    if not mano.tiene_juego():
+        return 1
+    return 3 if mano.get_juego_valor() == 31 else 2

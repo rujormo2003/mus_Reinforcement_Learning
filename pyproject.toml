@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mus-gym"
+version = "1.0.0"
+description = "El juego de cartas Mus (1 vs 1) como entorno de Gymnasium, con agentes RecurrentPPO entrenados."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["gymnasium>=1.0", "numpy>=1.24"]
+
+[project.optional-dependencies]
+train = ["torch>=2.3", "stable-baselines3>=2.7,<3", "sb3-contrib>=2.7,<3", "tensorboard"]
+play = ["pygame>=2.5"]
+eval = ["pandas", "matplotlib", "seaborn"]
+dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["mus_gym"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

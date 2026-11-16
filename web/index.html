@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mus contra la IA</title>
+  <meta name="description" content="Juega al Mus (1 contra 1) contra un agente entrenado con Reinforcement Learning (RecurrentPPO). La red neuronal se ejecuta en tu navegador.">
+  <link rel="icon" href="cards/as_oros.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>Mus <span>contra la IA</span></h1>
+      <p>Agente RecurrentPPO (LSTM) entrenado con Reinforcement Learning · se ejecuta en tu navegador</p>
+    </div>
+    <div class="controls">
+      <label class="field">
+        <span>Rival</span>
+        <select id="model-select"></select>
+      </label>
+      <button id="new-game" class="btn btn-ghost" type="button">Nueva partida</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="table" aria-label="Mesa de juego">
+      <div class="seat seat-ai">
+        <div class="seat-label">
+          <span class="who">IA</span>
+          <span class="badge-mano" id="ai-mano" hidden>Mano</span>
+          <span class="bubble" id="ai-bubble" aria-live="polite"></span>
+        </div>
+        <div class="cards" id="ai-cards"></div>
+      </div>
+
+      <div class="center">
+        <ol class="lances" id="lances"></ol>
+        <p class="status" id="status" aria-live="polite">Cargando la IA…</p>
+        <p class="bet" id="bet"></p>
+      </div>
+
+      <div class="seat seat-human">
+        <div class="actions" id="actions"></div>
+        <div class="cards" id="human-cards"></div>
+        <div class="seat-label">
+          <span class="who">Tú</span>
+          <span class="badge-mano" id="human-mano" hidden>Mano</span>
+          <span class="hand-info" id="hand-info"></span>
+        </div>
+      </div>
+
+      <div class="overlay" id="overlay" hidden>
+        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+          <h2 id="dialog-title"></h2>
+          <div id="dialog-body"></div>
+          <button id="dialog-btn" class="btn btn-primary" type="button"></button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <section class="card-box">
+        <h3>Marcador <small>a 30 puntos</small></h3>
+        <div class="score" id="score-human">
+          <div class="score-row"><span>Tú</span><strong>0</strong></div>
+          <div class="bar"><i></i></div>
+        </div>
+        <div class="score" id="score-ai">
+          <div class="score-row"><span>IA</span><strong>0</strong></div>
+          <div class="bar"><i></i></div>
+        </div>
+      </section>
+
+      <section class="card-box">
+        <h3>Lo que pensó la IA <small id="think-lance"></small></h3>
+        <div class="probs" id="probs"><p class="muted">Aún no ha jugado.</p></div>
+        <p class="muted small" id="think-note"></p>
+      </section>
+
+      <section class="card-box log-box">
+        <h3>Historial</h3>
+        <ol class="log" id="log"></ol>
+      </section>
+
+      <label class="toggle">
+        <input type="checkbox" id="show-ai-cards">
+        <span>Ver las cartas de la IA</span>
+      </label>
+
+      <details class="rules">
+        <summary>¿Cómo se juega esta versión?</summary>
+        <ul>
+          <li><b>1 contra 1</b>, partida a <b>30 puntos</b>. Sin fase de mus (no hay descarte).</li>
+          <li>Se juega con <b>8 reyes</b>: los treses cuentan como reyes y los doses como ases.</li>
+          <li>Cuatro lances en orden: <b>Grande</b> (cartas altas), <b>Chica</b> (bajas), <b>Pares</b> y <b>Juego</b> (31 o más).</li>
+          <li>Pares y Juego solo se apuestan si ambos tenéis; si solo uno tiene, se lleva 1 punto y su bonus.</li>
+          <li><b>Envido</b> = 2 puntos. Ante un envido puedes ver (<i>quiero</i>), rechazar (<i>no quiero</i>: el otro gana 1) o subir a <b>órdago</b>.</li>
+          <li>Un <b>órdago</b> aceptado se decide al momento: quien gane el lance gana la partida.</li>
+          <li>Al final de la mano: lances en paso (+1), envites aceptados, pares (1/2/3) y juego (31: 3, resto: 2).</li>
+          <li>En empate gana quien es <b>mano</b>, que alterna en cada mano.</li>
+        </ul>
+        <p class="muted small">Atajos de teclado: P paso · E envido · O órdago · Q quiero · N no quiero · Espacio continuar.</p>
+      </details>
+    </aside>
+  </main>
+
+  <footer class="footer">
+    Proyecto de Reinforcement Learning con <code>gymnasium</code> + <code>sb3-contrib</code>.
+    Cartas: baraja española libre (Wikimedia Commons).
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
