@@ -192,7 +192,7 @@ button, select, input { font: inherit; }
 .bet { margin: 0; min-height: 26px; font-weight: 700; color: #ffd98a; letter-spacing: .02em; }
 .bet.ordago { color: #ff9c87; font-size: 20px; }
 
-.actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; min-height: 44px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; min-height: 44px; justify-self: stretch; }
 .actions .btn { min-width: 108px; white-space: nowrap; background: #fff8e8; color: #2b2112; box-shadow: 0 3px 0 rgba(0,0,0,.25); }
 .actions .btn:hover { background: #fff; }
 .actions .btn.danger { background: var(--accent); color: #fff; }
